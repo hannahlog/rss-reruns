@@ -1,0 +1,12 @@
+# Ignore virtual environment
+env/
+
+# Ignore pycache
+src/__pycache__/
+test/__pycache__/
+.pytest_cache/
+.mypy_cache/
+
+# Ignore Sublime project/workspace
+*.sublime-project
+*.sublime-workspace

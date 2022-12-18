@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+# Adapted from the following guide for running Mypy
+# as a pre-commit hook:
+#
+# "Running Mypy in Pre-commit"
+# https://jaredkhan.com/blog/mypy-pre-commit
+#
+# (using Option 2 to run mypy with the virtual environment's
+# Python interpreter)
+#
+# Heavily WIP and subject to change. I haven't used Mypy before,
+# as a pre-commit hook or otherwise. 
+
+set -o errexit
+
+# Change directory to the project root directory.
+cd "$(dirname "$0")"
+
+# Run mypy with the virtual environment's Python 3 interpreter
+mypy src/ --python-executable "env/bin/python3" # --ignore-missing-imports

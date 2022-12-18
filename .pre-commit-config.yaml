@@ -1,0 +1,44 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 22.10.0
+    hooks:
+    - id: black
+  - repo: https://github.com/PyCQA/flake8
+    rev: 6.0.0
+    hooks:
+      - id: flake8
+        additional_dependencies: [
+          flake8-docstrings,
+          flake8-comprehensions,
+        ]
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.10.1
+    hooks:
+      - id: isort
+  - repo: local
+    hooks:
+        # Adapted from the following guide for running Mypy
+        # as a pre-commit hook:
+        #
+        # "Running Mypy in Pre-commit"
+        # https://jaredkhan.com/blog/mypy-pre-commit
+        #
+        # (using Option 2 to run mypy with the virtual environment's
+        # Python interpreter)
+        #
+        # Heavily WIP and subject to change. I haven't used Mypy before,
+        # as a pre-commit hook or otherwise. 
+      - id: mypy
+        name: mypy
+        entry: "./run-mypy"
+        language: python
+        # use your preferred Python version
+        language_version: python3.11
+        # additional_dependencies: ["mypy==0.991"]
+        # trigger for commits changing Python files
+        types: [python]
+        # use require_serial so that script
+        # is only called once per commit
+        require_serial: true
+        # print the number of files as a sanity-check
+        verbose: true
