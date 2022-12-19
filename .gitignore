@@ -10,3 +10,6 @@ test/__pycache__/
 # Ignore Sublime project/workspace
 *.sublime-project
 *.sublime-workspace
+
+# Ignore temporary output files
+out/
