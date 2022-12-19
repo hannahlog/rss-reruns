@@ -3,14 +3,15 @@
 from pathlib import Path
 
 import pytest
+from dateutil import parser
 
 from feedmodifier import AtomFeedModifier, RSSFeedModifier
 
 
 @pytest.fixture
-def rss_single_item():
+def rss_one_item():
     """Return RSSFeedModifier for an RSS feed with only one item."""
-    return RSSFeedModifier(Path("test/data/rss_single_item.xml"))
+    return RSSFeedModifier(Path("test/data/rss_one_item.xml"))
 
 
 @pytest.fixture
@@ -26,9 +27,9 @@ def rss_simple_examples(rss_one_item, rss_two_items):
 
 
 @pytest.fixture
-def atom_single_item():
+def atom_one_item():
     """Return RSSFeedModifier for an Atom feed with only one item."""
-    return AtomFeedModifier(Path("test/data/atom_single_item.xml"))
+    return AtomFeedModifier(Path("test/data/atom_one_item.xml"))
 
 
 @pytest.fixture
@@ -55,3 +56,34 @@ def test_AtomFeedModifier_init(atom_simple_examples):
     for atom_fm in atom_simple_examples:
         assert atom_fm.tree is not None
         assert atom_fm.root is not None
+
+
+def test_RSSFeedModifier_format_datetime_simple():
+    """Test formatting of datetimes to strings for RSSFeedModifier."""
+    example_datetimes = [
+        "Mon, 15 Mar 2021 14:32:20 -0400",
+        "Sun, 19 May 2002 15:21:36 +0000",
+    ]
+
+    for dt in example_datetimes:
+        dt_parsed = parser.parse(dt)
+        dt_formatted = RSSFeedModifier.format_datetime(dt_parsed)
+        assert dt == dt_formatted
+
+
+def test_AtomFeedModifier_format_datetime_simple():
+    """Test formatting of datetimes to strings for AtomFeedModifiers.
+
+    Adapted from https://datatracker.ietf.org/doc/html/rfc4287#section-3.3
+    """
+    example_datetimes = [
+        "2003-12-13T18:30:02Z",
+        "2003-12-13T18:30:02.700000Z",
+        "2003-12-13T18:30:02+01:00",
+        "2003-12-13T18:30:02.700000+01:00",
+    ]
+
+    for dt in example_datetimes:
+        dt_parsed = parser.parse(dt)
+        dt_formatted = AtomFeedModifier.format_datetime(dt_parsed)
+        assert dt == dt_formatted

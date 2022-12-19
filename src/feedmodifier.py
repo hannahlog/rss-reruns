@@ -3,6 +3,8 @@
 import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from datetime import datetime  # , timezone
+from email.utils import format_datetime
 from pathlib import Path
 
 Element = ET.Element
@@ -30,8 +32,9 @@ class FeedModifier(ABC):
         """Update a given entry/item's date of publication."""
         pass
 
+    @staticmethod
     @abstractmethod
-    def format_datetime(self, date) -> str:
+    def format_datetime(date: datetime) -> str:
         """Format a datetime as a string, in the format to be written to file."""
         pass
 
@@ -76,9 +79,31 @@ class RSSFeedModifier(FeedModifier):
         self.update_subelement_text(entry, "pubDate", date)
         pass
 
-    def format_datetime(self, date) -> str:
-        """Format a datetime as a string, in the format required for RSS."""
-        raise NotImplementedError
+    @staticmethod
+    def format_datetime(date: datetime) -> str:
+        """Format a datetime as a string, in the format required for RSS.
+
+        The RSS 2.0 specification stipulates:
+
+        "All date-times in RSS conform to the Date and Time Specification of RFC 822,
+        with the exception that the year may be expressed with two characters or four
+        characters (four preferred)."
+        (https://www.rssboard.org/rss-specification)
+
+        The functions `formatdate` and `format_datetime` in `emails.util` conform to
+        RFC 2822, which means their datetimes conform to RFC 822.
+        (https://docs.python.org/3/library/email.utils.html#email.utils.format_datetime)
+        `format_datetime`
+        is used below for our purposes.
+
+        Args:
+            date (datetime):
+                Date to be formatted.
+
+        Returns:
+            str: correctly-formatted string representing the datetime.
+        """
+        return format_datetime(date)
 
 
 class AtomFeedModifier(FeedModifier):
@@ -95,9 +120,31 @@ class AtomFeedModifier(FeedModifier):
         self.update_subelement_text(entry, "updated", date)
         pass
 
-    def format_datetime(self, date) -> str:
-        """Format a datetime as a string, in the format required for Atom."""
-        raise NotImplementedError
+    @staticmethod
+    def format_datetime(date: datetime) -> str:
+        """Format a datetime as a string, in the format required for Atom.
+
+        The Atom specification stipulates:
+
+        "A Date construct is an element whose content MUST conform to the "date-time"
+        production in [RFC3339].  In addition, an uppercase "T" character MUST be used
+        to separate date and time, and an uppercase "Z" character MUST be present in the
+        absence of a numeric time zone offset. [...]
+
+        Such date values happen to be compatible with the following specifications:
+        [ISO.8601.1988], [W3C.NOTE-datetime-19980827], and
+        [W3C.REC-xmlschema-2-20041028]."
+
+        (https://datatracker.ietf.org/doc/html/rfc4287#section-3.3)
+
+        Args:
+            date (datetime):
+                Date to be formatted.
+
+        Returns:
+            str: correctly-formatted string representing the datetime.
+        """
+        return date.isoformat("T").replace("+00:00", "Z")
 
 
 if __name__ == "__main__":
