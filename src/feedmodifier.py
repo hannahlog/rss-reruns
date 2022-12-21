@@ -8,6 +8,7 @@ from email.utils import format_datetime
 from pathlib import Path
 
 Element = ET.Element
+ElementTree = ET.ElementTree
 
 
 class FeedModifier(ABC):
@@ -19,8 +20,8 @@ class FeedModifier(ABC):
     def __init__(self, input_path: str | Path) -> None:
         """Initialization."""
         self.input_path: Path = Path(input_path)
-        self.tree = ET.parse(self.input_path)
-        self.root = self.tree.getroot()
+        self.tree: ElementTree = ET.parse(self.input_path)
+        self.root: Element = self.tree.getroot()
 
     @abstractmethod
     def feed_entries(self) -> Sequence[Element]:
@@ -28,7 +29,7 @@ class FeedModifier(ABC):
         pass
 
     @abstractmethod
-    def update_entry_pubdate(self, entry: Element, date) -> None:
+    def update_entry_pubdate(self, entry: Element, date: datetime) -> None:
         """Update a given entry/item's date of publication."""
         pass
 
@@ -73,10 +74,10 @@ class RSSFeedModifier(FeedModifier):
         channel = self.root.find("channel")
         return [] if channel is None else channel.findall("entry")
 
-    def update_entry_pubdate(self, entry: Element, date) -> None:
+    def update_entry_pubdate(self, entry: Element, date: datetime) -> None:
         """Update a given entry/item's date of publication."""
-        date = self.format_datetime(date)
-        self.update_subelement_text(entry, "pubDate", date)
+        formatted_date: str = self.format_datetime(date)
+        self.update_subelement_text(entry, "pubDate", formatted_date)
         pass
 
     @staticmethod
@@ -93,8 +94,8 @@ class RSSFeedModifier(FeedModifier):
         The functions `formatdate` and `format_datetime` in `emails.util` conform to
         RFC 2822, which means their datetimes conform to RFC 822.
         (https://docs.python.org/3/library/email.utils.html#email.utils.format_datetime)
-        `format_datetime`
-        is used below for our purposes.
+
+        `format_datetime`is used below for our purposes.
 
         Args:
             date (datetime):
@@ -113,11 +114,11 @@ class AtomFeedModifier(FeedModifier):
         """Returns iterator over the feed's entry elements."""
         return self.root.findall("entry")
 
-    def update_entry_pubdate(self, entry: Element, date) -> None:
+    def update_entry_pubdate(self, entry: Element, date: datetime) -> None:
         """Update a given entry/item's date of publication."""
-        date = self.format_datetime(date)
-        self.update_subelement_text(entry, "published", date)
-        self.update_subelement_text(entry, "updated", date)
+        formatted_date: str = self.format_datetime(date)
+        self.update_subelement_text(entry, "published", formatted_date)
+        self.update_subelement_text(entry, "updated", formatted_date)
         pass
 
     @staticmethod
