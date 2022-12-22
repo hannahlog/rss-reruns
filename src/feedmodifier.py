@@ -1,14 +1,16 @@
 """Modify a given XML-based feed (RSS or Atom)."""
 
-import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import datetime  # , timezone
 from email.utils import format_datetime
 from pathlib import Path
 
-Element = ET.Element
-ElementTree = ET.ElementTree
+from lxml import etree as ET
+
+# Underscores present because those are the class names in lxml.etree
+Element = ET._Element
+ElementTree = ET._ElementTree
 
 
 class FeedModifier(ABC):
@@ -22,6 +24,25 @@ class FeedModifier(ABC):
         self.input_path: Path = Path(input_path)
         self.tree: ElementTree = ET.parse(self.input_path)
         self.root: Element = self.tree.getroot()
+
+        # Dictionary of XML namespaces to use with `find()`, `findall()`, etc.
+        #
+        # The extra logic is due to the representation of a Default Namespace
+        # in the `root.nsmap` dicitonary -- if there is a default namespace, its
+        # key is `None` rather than an empty string. This makes Mypy find its
+        # keys to have type `Optional[str]` instead of `str`, which unfortunately
+        # makes it believe the dictionary is incompatible with the type signature
+        # of `find()`, `findall()` etc.
+        #
+        # This comprehension creates an equivalent dictionary, but replacing a `None`
+        # key with an empty string `""`.
+        #
+        # TODO: Review and make sure this replacement is correct and introduces no
+        # problems. Possibly use a named function in place of the anonymous
+        # comprehension.
+        self.nsmap: dict[str, str] = {
+            (k if k is not None else ""): v for k, v in self.root.nsmap.items()
+        }
 
     @abstractmethod
     def feed_entries(self) -> Sequence[Element]:
@@ -71,8 +92,8 @@ class RSSFeedModifier(FeedModifier):
 
     def feed_entries(self) -> Sequence[Element]:
         """Returns iterator over the feed's item elements."""
-        channel = self.root.find("channel")
-        return [] if channel is None else channel.findall("entry")
+        channel = self.root.find("channel", self.nsmap)
+        return [] if channel is None else channel.findall("item", self.nsmap)
 
     def update_entry_pubdate(self, entry: Element, date: datetime) -> None:
         """Update a given entry/item's date of publication."""
@@ -112,7 +133,7 @@ class AtomFeedModifier(FeedModifier):
 
     def feed_entries(self) -> Sequence[Element]:
         """Returns iterator over the feed's entry elements."""
-        return self.root.findall("entry")
+        return self.root.findall("entry", self.nsmap)
 
     def update_entry_pubdate(self, entry: Element, date: datetime) -> None:
         """Update a given entry/item's date of publication."""

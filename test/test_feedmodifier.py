@@ -8,40 +8,30 @@ from dateutil import parser
 from feedmodifier import AtomFeedModifier, RSSFeedModifier
 
 
-@pytest.fixture
-def rss_one_item():
-    """Return RSSFeedModifier for an RSS feed with only one item."""
-    return RSSFeedModifier(Path("test/data/rss_one_item.xml"))
+def as_RSS(filename: str) -> RSSFeedModifier:
+    """Initialize RSSFeedModifier with the given RSS feed."""
+    return RSSFeedModifier(Path("".join(["test/data/", filename])))
+
+
+def as_Atom(filename: str) -> AtomFeedModifier:
+    """Initialize AtomFeedModifier with the given Atom feed."""
+    return AtomFeedModifier(Path("".join(["test/data/", filename])))
 
 
 @pytest.fixture
-def rss_two_items():
-    """Return RSSFeedModifier for an RSS feed with two items."""
-    return RSSFeedModifier(Path("test/data/rss_two_items.xml"))
-
-
-@pytest.fixture
-def rss_simple_examples(rss_one_item, rss_two_items):
+def rss_simple_examples():
     """List of RSSFeedModifiers for simple RSS feeds."""
-    return [rss_one_item, rss_two_items]
+    return (
+        as_RSS(fname) for fname in ("no_items.rss", "one_item.rss", "two_items.rss")
+    )
 
 
 @pytest.fixture
-def atom_one_item():
-    """Return RSSFeedModifier for an Atom feed with only one item."""
-    return AtomFeedModifier(Path("test/data/atom_one_item.xml"))
-
-
-@pytest.fixture
-def atom_two_items():
-    """Return AtomFeedModifier for an Atom feed with two items."""
-    return AtomFeedModifier(Path("test/data/atom_two_items.xml"))
-
-
-@pytest.fixture
-def atom_simple_examples(atom_one_item, atom_two_items):
-    """List of RSSFeedModifiers for simple RSS feeds."""
-    return [atom_one_item, atom_two_items]
+def atom_simple_examples():
+    """List of AtomFeedModifiers for simple Atom feeds."""
+    return (
+        as_Atom(fname) for fname in ("no_items.atom", "one_item.atom", "two_items.atom")
+    )
 
 
 def test_RSSFeedModifier_init(rss_simple_examples):
@@ -56,6 +46,36 @@ def test_AtomFeedModifier_init(atom_simple_examples):
     for atom_fm in atom_simple_examples:
         assert atom_fm.tree is not None
         assert atom_fm.root is not None
+
+
+def rss_len_examples() -> tuple[RSSFeedModifier, int]:
+    """Test cases for RSSFeedModifier's expected number of entries."""
+    return [
+        (as_RSS("no_items.rss"), 0),
+        (as_RSS("one_item.rss"), 1),
+        (as_RSS("two_items.rss"), 2),
+    ]
+
+
+def atom_len_examples() -> tuple[AtomFeedModifier, int]:
+    """Test cases for AtomFeedModifier's expected number of entries."""
+    return [
+        (as_Atom("no_items.atom"), 0),
+        (as_Atom("one_item.atom"), 1),
+        (as_Atom("two_items.atom"), 2),
+    ]
+
+
+@pytest.mark.parametrize("rss_fm, expected_len", rss_len_examples())
+def test_RSSFeedModifier_feed_entries_len(rss_fm, expected_len):
+    """Test feed_entries() for RSSFeedModifiers."""
+    assert len(rss_fm.feed_entries()) == expected_len
+
+
+@pytest.mark.parametrize("atom_fm, expected_len", atom_len_examples())
+def test_AtomFeedModifier_feed_entries_len(atom_fm, expected_len):
+    """Test feed_entries() for AtomFeedModifiers."""
+    assert len(atom_fm.feed_entries()) == expected_len
 
 
 def test_RSSFeedModifier_format_datetime_simple():
