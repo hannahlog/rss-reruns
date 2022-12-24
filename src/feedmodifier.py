@@ -28,14 +28,14 @@ class FeedModifier(ABC):
         # Dictionary of XML namespaces to use with `find()`, `findall()`, etc.
         #
         # The extra logic is due to the representation of a Default Namespace
-        # in the `root.nsmap` dicitonary -- if there is a default namespace, its
+        # in the `root.nsmap` dictionary -- if there is a default namespace, its
         # key is `None` rather than an empty string. This makes Mypy find its
         # keys to have type `Optional[str]` instead of `str`, which unfortunately
         # makes it believe the dictionary is incompatible with the type signature
         # of `find()`, `findall()` etc.
         #
         # This comprehension creates an equivalent dictionary, but replacing a `None`
-        # key with an empty string `""`.
+        # key with an empty string `""` if encountered.
         #
         # TODO: Review and make sure this replacement is correct and introduces no
         # problems. Possibly use a named function in place of the anonymous
@@ -62,7 +62,7 @@ class FeedModifier(ABC):
 
     def update_subelement_text(
         self, element: Element, subelement_name: str, text: str
-    ) -> None:
+    ) -> Element:
         """Update the text of a specified entry's subelement.
 
         If no subelement with the specified name is found, add the subelement before
@@ -77,14 +77,14 @@ class FeedModifier(ABC):
                 Text to be enclosed by the specified subelement.
 
         Returns:
-            None
+            Element: the modified (possibly newly created) subelement.
         """
-        subelement = element.find(subelement_name)
-        if not subelement:
+        subelement = element.find(subelement_name, self.nsmap)
+        if subelement is None:
             subelement = ET.SubElement(element, subelement_name)
 
         subelement.text = text
-        pass
+        return subelement
 
 
 class RSSFeedModifier(FeedModifier):

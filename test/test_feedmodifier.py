@@ -21,17 +21,17 @@ def as_Atom(filename: str) -> AtomFeedModifier:
 @pytest.fixture
 def rss_simple_examples():
     """List of RSSFeedModifiers for simple RSS feeds."""
-    return (
+    return [
         as_RSS(fname) for fname in ("no_items.rss", "one_item.rss", "two_items.rss")
-    )
+    ]
 
 
 @pytest.fixture
 def atom_simple_examples():
     """List of AtomFeedModifiers for simple Atom feeds."""
-    return (
+    return [
         as_Atom(fname) for fname in ("no_items.atom", "one_item.atom", "two_items.atom")
-    )
+    ]
 
 
 def test_RSSFeedModifier_init(rss_simple_examples):
@@ -76,6 +76,30 @@ def test_RSSFeedModifier_feed_entries_len(rss_fm, expected_len):
 def test_AtomFeedModifier_feed_entries_len(atom_fm, expected_len):
     """Test feed_entries() for AtomFeedModifiers."""
     assert len(atom_fm.feed_entries()) == expected_len
+
+
+@pytest.mark.parametrize("fms", ["atom_simple_examples", "rss_simple_examples"])
+def test_update_subelement_text(fms, request):
+    """Test `update_subelement_text` for FeedModifiers."""
+    fms = request.getfixturevalue(fms)
+    # (Don't test the FeedModifiers with 0 entries)
+    fms = [fm for fm in fms if len(fm.feed_entries()) > 0]
+
+    for fm in fms:
+        num_entries = len(fm.feed_entries())
+        contents = []
+        for index, entry in enumerate(fm.feed_entries()):
+            new_content = f"The content is {index}"
+            content_element = fm.update_subelement_text(entry, "content", new_content)
+            contents.append((content_element, new_content))
+
+        # The number of entries should remain the same
+        assert len(fm.feed_entries()) == num_entries
+
+        # Check that the element texts have been updated correctly, and that updating
+        # one entry's subelement did not affect a different entry's subelement.
+        for element, content in contents:
+            assert element.text == content
 
 
 def test_RSSFeedModifier_format_datetime_simple():
