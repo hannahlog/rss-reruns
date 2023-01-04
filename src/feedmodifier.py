@@ -44,6 +44,13 @@ class FeedModifier(ABC):
             (k if k is not None else ""): v for k, v in self.root.nsmap.items()
         }
 
+        self.channel = self.feed_channel()
+
+    @abstractmethod
+    def feed_channel(self) -> Element:
+        """Returns the `feed` (Atom) or `channel` (RSS) element of the tree."""
+        pass
+
     @abstractmethod
     def feed_entries(self) -> Sequence[Element]:
         """Returns iterator over the feed's entry/item elements."""
@@ -90,10 +97,18 @@ class FeedModifier(ABC):
 class RSSFeedModifier(FeedModifier):
     """Modify a given RSS feed."""
 
+    def feed_channel(self) -> Element:
+        """Returns the `feed` (Atom) or `channel` (RSS) element of the tree."""
+        # For RSS, the `channel` element is a child of the root `rss` element
+        channel = self.root.find("channel", self.nsmap)
+        if channel is None:
+            raise ValueError("RSS feed must contain `channel` element (not found).")
+        else:
+            return channel
+
     def feed_entries(self) -> Sequence[Element]:
         """Returns iterator over the feed's item elements."""
-        channel = self.root.find("channel", self.nsmap)
-        return [] if channel is None else channel.findall("item", self.nsmap)
+        return self.channel.findall("item", self.nsmap)
 
     def update_entry_pubdate(self, entry: Element, date: datetime) -> list[Element]:
         """Update a given entry/item's date of publication."""
@@ -130,9 +145,14 @@ class RSSFeedModifier(FeedModifier):
 class AtomFeedModifier(FeedModifier):
     """Modify a given Atom feed."""
 
+    def feed_channel(self) -> Element:
+        """Returns the `feed` (Atom) or `channel` (RSS) element of the tree."""
+        # For Atom, the `feed` element is the root itself
+        return self.root
+
     def feed_entries(self) -> Sequence[Element]:
         """Returns iterator over the feed's entry elements."""
-        return self.root.findall("entry", self.nsmap)
+        return self.channel.findall("entry", self.nsmap)
 
     def update_entry_pubdate(self, entry: Element, date: datetime) -> list[Element]:
         """Update a given entry/item's date of publication."""
