@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from datetime import datetime  # , timezone
 from email.utils import format_datetime
 from pathlib import Path
+from typing import Callable
 
 from lxml import etree as ET
 
@@ -19,7 +20,9 @@ class FeedModifier(ABC):
     Concrete subclasses correspond to the specific kind of feed, i.e. RSS or Atom.
     """
 
-    def __init__(self, input_path: str | Path) -> None:
+    def __init__(
+        self, input_path: str | Path, title_kwargs={"prefix": "RERUNS: "}
+    ) -> None:
         """Initialization."""
         self.input_path: Path = Path(input_path)
         self.tree: ElementTree = ET.parse(self.input_path)
@@ -44,7 +47,55 @@ class FeedModifier(ABC):
             (k if k is not None else ""): v for k, v in self.root.nsmap.items()
         }
 
+        # Element containing metadata and entry/item elements:
+        # `feed` for Atom (which is also the root), and `channel` for RSS (not the root)
         self.channel = self.feed_channel()
+        self.set_feed_title(**title_kwargs)
+
+    def set_feed_title(
+        self,
+        *,
+        title: str | None = None,
+        prefix: str | None = None,
+        func: Callable[[str], str] | None = None,
+    ) -> str:
+        """Specify the new feed's title, either exactly, or with a prefix or function.
+
+        The new title may be specified through exactly one of the keyword arguments:
+        `title` to give an exact string, `prefix` to prepend a string to the original
+        title, or `func` to provide a function that, given the old title as a string,
+        creates a new title string.
+
+        Args:
+            title (str):
+                Exact string to use as the republished feed's title.
+            prefix (str):
+                String to prepend to the original title.
+            func (str -> str):
+                Function taking the original title and returning the new title.
+
+        Returns:
+            str: the title of the republished feed, as it will be written to file.
+        """
+        num_kwargs = len([arg for arg in (title, prefix, func) if arg is not None])
+        if num_kwargs != 1:
+            raise ValueError(f"Expected exactly one kwarg, found: {num_kwargs}")
+
+        if title is not None:
+            self._title = title
+        else:
+            title_element = self.get_subelement(self.channel, "title")
+            old_title = (
+                title_element.text
+                if title_element is not None and title_element.text is not None
+                else ""
+            )
+            if prefix is not None:
+                self._title = "".join([prefix, old_title])
+            elif func is not None:
+                self._title = func(old_title)
+
+        return self._title
 
     @abstractmethod
     def feed_channel(self) -> Element:
@@ -86,12 +137,26 @@ class FeedModifier(ABC):
         Returns:
             Element: the modified (possibly newly created) subelement.
         """
-        subelement = element.find(subelement_name, self.nsmap)
+        subelement = self.get_subelement(element, subelement_name)
         if subelement is None:
             subelement = ET.SubElement(element, subelement_name)
 
         subelement.text = text
         return subelement
+
+    def get_subelement(self, element: Element, subelement_name: str) -> Element | None:
+        """Get a specified element's subelement.
+
+        Args:
+            entry (Element):
+                Parent XML element whose subelement is to be found.
+            subelement_name (str):
+                Name of the subelement to find.
+
+        Returns:
+            Optional[Element]: the found subelement, or None if not found.
+        """
+        return element.find(subelement_name, self.nsmap)
 
 
 class RSSFeedModifier(FeedModifier):

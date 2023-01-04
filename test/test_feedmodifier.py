@@ -9,14 +9,14 @@ from dateutil import parser
 from feedmodifier import AtomFeedModifier, RSSFeedModifier
 
 
-def as_RSS(filename: str) -> RSSFeedModifier:
+def as_RSS(filename: str, **kwargs) -> RSSFeedModifier:
     """Initialize RSSFeedModifier with the given RSS feed."""
-    return RSSFeedModifier(Path("".join(["test/data/", filename])))
+    return RSSFeedModifier(Path("".join(["test/data/", filename])), **kwargs)
 
 
-def as_Atom(filename: str) -> AtomFeedModifier:
+def as_Atom(filename: str, **kwargs) -> AtomFeedModifier:
     """Initialize AtomFeedModifier with the given Atom feed."""
-    return AtomFeedModifier(Path("".join(["test/data/", filename])))
+    return AtomFeedModifier(Path("".join(["test/data/", filename])), **kwargs)
 
 
 @pytest.fixture
@@ -40,6 +40,7 @@ def test_RSSFeedModifier_init(rss_simple_examples):
     for rss_fm in rss_simple_examples:
         assert rss_fm.tree is not None
         assert rss_fm.root is not None
+        assert rss_fm.channel is not None
 
 
 def test_AtomFeedModifier_init(atom_simple_examples):
@@ -47,6 +48,45 @@ def test_AtomFeedModifier_init(atom_simple_examples):
     for atom_fm in atom_simple_examples:
         assert atom_fm.tree is not None
         assert atom_fm.root is not None
+        assert atom_fm.channel is not None
+
+
+@pytest.mark.parametrize("fms", ["atom_simple_examples", "rss_simple_examples"])
+def test_set_title_too_many_kwargs(fms, request):
+    """Confirm `set_title` raises error if given too many kwargs."""
+    fms = request.getfixturevalue(fms)
+    # For already-initialized FeedModifiers:
+    for fm in fms:
+        # Giving exactly two keyword arguments:
+        with pytest.raises(ValueError) as exc_info:
+            fm.set_feed_title(title="My New Title", prefix="New Title's Prefix: ")
+        assert exc_info.value.args[0] == "Expected exactly one kwarg, found: 2"
+
+        with pytest.raises(ValueError) as exc_info:
+            fm.set_feed_title(title="My New Title", func=str.upper)
+        assert exc_info.value.args[0] == "Expected exactly one kwarg, found: 2"
+
+        with pytest.raises(ValueError) as exc_info:
+            fm.set_feed_title(prefix="New Title's Prefix: ", func=str.upper)
+        assert exc_info.value.args[0] == "Expected exactly one kwarg, found: 2"
+
+        # Giving all three keyword arguments:
+        with pytest.raises(ValueError) as exc_info:
+            fm.set_feed_title(
+                title="My New Title", prefix="New Title's Prefix: ", func=str.upper
+            )
+        assert exc_info.value.args[0] == "Expected exactly one kwarg, found: 3"
+
+
+@pytest.mark.parametrize("fms", ["atom_simple_examples", "rss_simple_examples"])
+def test_set_title_no_kwargs(fms, request):
+    """Confirm `set_title` raises error if given too few (i.e. zero) kwargs."""
+    fms = request.getfixturevalue(fms)
+    # For already-initialized FeedModifiers:
+    for fm in fms:
+        with pytest.raises(ValueError) as exc_info:
+            fm.set_feed_title()
+        assert exc_info.value.args[0] == "Expected exactly one kwarg, found: 0"
 
 
 def rss_len_examples() -> tuple[RSSFeedModifier, int]:
@@ -105,10 +145,6 @@ def test_update_subelement_text(fms, request):
 
 def test_update_entry_pubdate(atom_simple_examples, rss_simple_examples):
     """Test `update_entry_pubdate` for FeedModifiers."""
-    # (Don't test the FeedModifiers with 0 entries)
-    # atom_fms = [fm for fm in atom_simple_examples if len(fm.feed_entries()) > 0]
-    # rss_fms = [fm for fm in rss_simple_examples if len(fm.feed_entries()) > 0]
-
     for fm in [*atom_simple_examples, *rss_simple_examples]:
         num_entries = len(fm.feed_entries())
         elements_dates = []
@@ -120,15 +156,15 @@ def test_update_entry_pubdate(atom_simple_examples, rss_simple_examples):
         # The number of entries should remain the same
         assert len(fm.feed_entries()) == num_entries
 
-        # Check that the element texts have been updated correctly
         for elements, dt in elements_dates:
-
             # Check that the correct elements were updated (different depending on
             # type of feed)
             if isinstance(fm, RSSFeedModifier):
+                # An RSSFeedModifier only updates `pubDate`
                 assert len(elements) == 1
                 assert elements[0].tag.rpartition("}")[2] == "pubDate"
             else:
+                # An AtomFeedModifier should update both `published` and `updated`
                 assert len(elements) == 2
                 assert {el.tag.rpartition("}")[2] for el in elements} == {
                     "published",
