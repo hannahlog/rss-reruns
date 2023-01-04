@@ -118,7 +118,7 @@ class FeedModifier(ABC):
         """Format a datetime as a string, in the format to be written to file."""
         pass
 
-    def update_subelement_text(
+    def set_subelement_text(
         self, element: Element, subelement_name: str, text: str
     ) -> Element:
         """Update the text of a specified entry's subelement.
@@ -178,7 +178,7 @@ class RSSFeedModifier(FeedModifier):
     def update_entry_pubdate(self, entry: Element, date: datetime) -> list[Element]:
         """Update a given entry/item's date of publication."""
         formatted_date: str = self.format_datetime(date)
-        return [self.update_subelement_text(entry, "pubDate", formatted_date)]
+        return [self.set_subelement_text(entry, "pubDate", formatted_date)]
 
     @staticmethod
     def format_datetime(date: datetime) -> str:
@@ -222,8 +222,8 @@ class AtomFeedModifier(FeedModifier):
     def update_entry_pubdate(self, entry: Element, date: datetime) -> list[Element]:
         """Update a given entry/item's date of publication."""
         formatted_date: str = self.format_datetime(date)
-        published = self.update_subelement_text(entry, "published", formatted_date)
-        updated = self.update_subelement_text(entry, "updated", formatted_date)
+        published = self.set_subelement_text(entry, "published", formatted_date)
+        updated = self.set_subelement_text(entry, "updated", formatted_date)
         return [published, updated]
 
     @staticmethod

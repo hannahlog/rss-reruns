@@ -69,7 +69,6 @@ def test_set_title_too_many_kwargs(fms, request):
     choose_two_kwargs: list[dict[str:Any]] = [
         {k: v for k, v in i} for i in itertools.combinations(all_kwargs.items(), 2)
     ]
-    print(choose_two_kwargs)
 
     # For already-initialized FeedModifiers:
     for fm in fms:
@@ -127,8 +126,8 @@ def test_AtomFeedModifier_feed_entries_len(atom_fm, expected_len):
 
 
 @pytest.mark.parametrize("fms", ["atom_simple_examples", "rss_simple_examples"])
-def test_update_subelement_text(fms, request):
-    """Test `update_subelement_text` for FeedModifiers."""
+def test_set_subelement_text(fms, request):
+    """Test `set_subelement_text` for FeedModifiers."""
     fms = request.getfixturevalue(fms)
     # (Don't test the FeedModifiers with 0 entries)
     fms = [fm for fm in fms if len(fm.feed_entries()) > 0]
@@ -138,7 +137,7 @@ def test_update_subelement_text(fms, request):
         contents = []
         for index, entry in enumerate(fm.feed_entries()):
             new_content = f"The content is {index}"
-            content_element = fm.update_subelement_text(entry, "content", new_content)
+            content_element = fm.set_subelement_text(entry, "content", new_content)
             contents.append((content_element, new_content))
 
         # The number of entries should remain the same
