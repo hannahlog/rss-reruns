@@ -1,7 +1,9 @@
 """FeedModifier test cases (with PyTest)."""
 
+import itertools
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import pytest
 from dateutil import parser
@@ -55,26 +57,31 @@ def test_AtomFeedModifier_init(atom_simple_examples):
 def test_set_title_too_many_kwargs(fms, request):
     """Confirm `set_title` raises error if given too many kwargs."""
     fms = request.getfixturevalue(fms)
+
+    all_kwargs = {
+        "title": "My New Title",
+        "prefix": "New Title's Prefix: ",
+        "func": str.upper,
+    }
+
+    # List of all length-2 combinations, e.g.
+    #   {"title": "My New Title", "func": str.upper}
+    choose_two_kwargs: list[dict[str:Any]] = [
+        {k: v for k, v in i} for i in itertools.combinations(all_kwargs.items(), 2)
+    ]
+    print(choose_two_kwargs)
+
     # For already-initialized FeedModifiers:
     for fm in fms:
-        # Giving exactly two keyword arguments:
-        with pytest.raises(ValueError) as exc_info:
-            fm.set_feed_title(title="My New Title", prefix="New Title's Prefix: ")
-        assert exc_info.value.args[0] == "Expected exactly one kwarg, found: 2"
-
-        with pytest.raises(ValueError) as exc_info:
-            fm.set_feed_title(title="My New Title", func=str.upper)
-        assert exc_info.value.args[0] == "Expected exactly one kwarg, found: 2"
-
-        with pytest.raises(ValueError) as exc_info:
-            fm.set_feed_title(prefix="New Title's Prefix: ", func=str.upper)
-        assert exc_info.value.args[0] == "Expected exactly one kwarg, found: 2"
+        for two_kwargs in choose_two_kwargs:
+            # Giving exactly two keyword arguments:
+            with pytest.raises(ValueError) as exc_info:
+                fm.set_feed_title(**two_kwargs)
+            assert exc_info.value.args[0] == "Expected exactly one kwarg, found: 2"
 
         # Giving all three keyword arguments:
         with pytest.raises(ValueError) as exc_info:
-            fm.set_feed_title(
-                title="My New Title", prefix="New Title's Prefix: ", func=str.upper
-            )
+            fm.set_feed_title(**all_kwargs)
         assert exc_info.value.args[0] == "Expected exactly one kwarg, found: 3"
 
 
