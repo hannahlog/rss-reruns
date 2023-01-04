@@ -21,7 +21,7 @@ class FeedModifier(ABC):
     """
 
     def __init__(
-        self, input_path: str | Path, title_kwargs={"prefix": "RERUNS: "}
+        self, input_path: str | Path, title_kwargs={"prefix": "[Reruns:] "}
     ) -> None:
         """Initialization."""
         self.input_path: Path = Path(input_path)
@@ -49,7 +49,8 @@ class FeedModifier(ABC):
 
         # Element containing metadata and entry/item elements:
         # `feed` for Atom (which is also the root), and `channel` for RSS (not the root)
-        self.channel = self.feed_channel()
+        self.channel: Element = self.feed_channel()
+
         self.set_feed_title(**title_kwargs)
 
     def set_feed_title(
