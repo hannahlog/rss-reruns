@@ -6,9 +6,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import requests
 from dateutil import parser
 
-from feedmodifier import AtomFeedModifier, RSSFeedModifier
+from feedmodifier import AtomFeedModifier, FeedModifier, RSSFeedModifier
+
+tmp_dir = "test/tmp/"
+Path(tmp_dir).mkdir(exist_ok=True)
 
 
 def as_RSS(filename: str, **kwargs) -> RSSFeedModifier:
@@ -51,6 +55,61 @@ def test_AtomFeedModifier_init(atom_simple_examples):
         assert atom_fm.tree is not None
         assert atom_fm.root is not None
         assert atom_fm.channel is not None
+
+
+# TODO: better way to organize/write this? :(
+@pytest.mark.parametrize(
+    "args, expected_path",
+    [
+        # No path specified: expect default
+        (
+            (rss_url := "http://www.rss-specifications.com/blog-feed.xml", None),
+            "feed.xml",
+        ),
+        # Path specified as "test/tmp/my-filename.rss" string
+        ((rss_url, tmp_path := tmp_dir + "my-filename.rss"), tmp_path),
+        # Same path but given as a Path object
+        ((rss_url, Path(tmp_path)), tmp_path),
+    ],
+)
+def test_url_to_file(args, expected_path):
+    """Test `url_to_file` with or without a path specified."""
+    saved_path = FeedModifier.url_to_file(*args)
+    assert saved_path == expected_path
+    file = Path(saved_path)
+    assert file.exists()
+    assert file.is_file()
+    file.unlink()
+
+
+# TODO: this is effectively a test for `requests.get`: consider removal?
+@pytest.mark.parametrize(
+    "bad_url, expected_exception",
+    [
+        ("just some words", requests.exceptions.MissingSchema),
+        ("https://", requests.exceptions.InvalidURL),
+    ],
+)
+def test_url_to_file_invalid_url(bad_url, expected_exception):
+    """Test `url_to_file` with an invalid URL argument."""
+    with pytest.raises(expected_exception) as exc_info:
+        FeedModifier.url_to_file(bad_url)
+    assert "Invalid URL" in exc_info.value.args[0]
+
+
+@pytest.mark.parametrize(
+    "url_404",
+    [
+        "https://google.com/this-will-404-not-a-real-url-34454127.xml",
+    ],
+)
+def test_url_to_file_404(url_404):
+    """Test `url_to_file` with a valid URL that will return 404 Not Found."""
+    with pytest.raises(ValueError) as exc_info:
+        FeedModifier.url_to_file(url_404)
+    assert (
+        exc_info.value.args[0] == f"Requested url {url_404} returned status code: 404"
+    )
 
 
 @pytest.mark.parametrize("fms", ["atom_simple_examples", "rss_simple_examples"])
@@ -129,7 +188,7 @@ def test_AtomFeedModifier_feed_entries_len(atom_fm, expected_len):
 def test_set_subelement_text(fms, request):
     """Test `set_subelement_text` for FeedModifiers."""
     fms = request.getfixturevalue(fms)
-    # (Don't test the FeedModifiers with 0 entries)
+    # (Skip FeedModifiers with 0 entries)
     fms = [fm for fm in fms if len(fm.feed_entries()) > 0]
 
     for fm in fms:

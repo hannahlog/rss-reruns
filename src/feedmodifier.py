@@ -5,8 +5,9 @@ from collections.abc import Sequence
 from datetime import datetime  # , timezone
 from email.utils import format_datetime
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
+import requests
 from lxml import etree as ET
 
 # Underscores present because those are the class names in lxml.etree
@@ -21,9 +22,19 @@ class FeedModifier(ABC):
     """
 
     def __init__(
-        self, input_path: str | Path, title_kwargs={"prefix": "[Reruns:] "}
+        self,
+        input_path: str | Path,
+        url: Optional[str] = None,
+        save_path: Optional[str | Path] = None,
+        title_kwargs={"prefix": "[Reruns:] "},
     ) -> None:
         """Initialization."""
+        self.source_url: Optional[str] = None
+        # TODO: URL validation
+        if url is not None:
+            self.source_url = url
+            input_path = self.url_to_file(url, save_path)
+
         self.input_path: Path = Path(input_path)
         self.tree: ElementTree = ET.parse(self.input_path)
         self.root: Element = self.tree.getroot()
@@ -52,6 +63,19 @@ class FeedModifier(ABC):
         self.channel: Element = self.feed_channel()
 
         self.set_feed_title(**title_kwargs)
+
+    @staticmethod
+    def url_to_file(url: str, path: Optional[str | Path] = None) -> str | Path:
+        """Download and save XML from given URL."""
+        path = path if path is not None else "feed.xml"
+        response = requests.get(url)
+        if not response.ok:
+            raise ValueError(
+                f"Requested url {url} returned status code: {response.status_code}"
+            )
+        with open(path, "wb") as f:
+            f.write(response.content)
+        return str(path)
 
     def set_feed_title(
         self,
