@@ -1,5 +1,6 @@
 """FeedModifier test cases (with PyTest)."""
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -100,6 +101,43 @@ def test_update_subelement_text(fms, request):
         # one entry's subelement did not affect a different entry's subelement.
         for element, content in contents:
             assert element.text == content
+
+
+def test_update_entry_pubdate(atom_simple_examples, rss_simple_examples):
+    """Test `update_entry_pubdate` for FeedModifiers."""
+    # (Don't test the FeedModifiers with 0 entries)
+    # atom_fms = [fm for fm in atom_simple_examples if len(fm.feed_entries()) > 0]
+    # rss_fms = [fm for fm in rss_simple_examples if len(fm.feed_entries()) > 0]
+
+    for fm in [*atom_simple_examples, *rss_simple_examples]:
+        num_entries = len(fm.feed_entries())
+        elements_dates = []
+        for entry in fm.feed_entries():
+            dt_now = datetime.now(timezone.utc)
+            updated = fm.update_entry_pubdate(entry, dt_now)
+            elements_dates.append((updated, dt_now))
+
+        # The number of entries should remain the same
+        assert len(fm.feed_entries()) == num_entries
+
+        # Check that the element texts have been updated correctly
+        for elements, dt in elements_dates:
+
+            # Check that the correct elements were updated (different depending on
+            # type of feed)
+            if isinstance(fm, RSSFeedModifier):
+                assert len(elements) == 1
+                assert elements[0].tag.rpartition("}")[2] == "pubDate"
+            else:
+                assert len(elements) == 2
+                assert {el.tag.rpartition("}")[2] for el in elements} == {
+                    "published",
+                    "updated",
+                }
+
+            # Check that the datetimes were set as expected
+            for el in elements:
+                assert el.text == fm.format_datetime(dt)
 
 
 def test_RSSFeedModifier_format_datetime_simple():

@@ -50,7 +50,7 @@ class FeedModifier(ABC):
         pass
 
     @abstractmethod
-    def update_entry_pubdate(self, entry: Element, date: datetime) -> None:
+    def update_entry_pubdate(self, entry: Element, date: datetime) -> list[Element]:
         """Update a given entry/item's date of publication."""
         pass
 
@@ -95,11 +95,10 @@ class RSSFeedModifier(FeedModifier):
         channel = self.root.find("channel", self.nsmap)
         return [] if channel is None else channel.findall("item", self.nsmap)
 
-    def update_entry_pubdate(self, entry: Element, date: datetime) -> None:
+    def update_entry_pubdate(self, entry: Element, date: datetime) -> list[Element]:
         """Update a given entry/item's date of publication."""
         formatted_date: str = self.format_datetime(date)
-        self.update_subelement_text(entry, "pubDate", formatted_date)
-        pass
+        return [self.update_subelement_text(entry, "pubDate", formatted_date)]
 
     @staticmethod
     def format_datetime(date: datetime) -> str:
@@ -135,12 +134,12 @@ class AtomFeedModifier(FeedModifier):
         """Returns iterator over the feed's entry elements."""
         return self.root.findall("entry", self.nsmap)
 
-    def update_entry_pubdate(self, entry: Element, date: datetime) -> None:
+    def update_entry_pubdate(self, entry: Element, date: datetime) -> list[Element]:
         """Update a given entry/item's date of publication."""
         formatted_date: str = self.format_datetime(date)
-        self.update_subelement_text(entry, "published", formatted_date)
-        self.update_subelement_text(entry, "updated", formatted_date)
-        pass
+        published = self.update_subelement_text(entry, "published", formatted_date)
+        updated = self.update_subelement_text(entry, "updated", formatted_date)
+        return [published, updated]
 
     @staticmethod
     def format_datetime(date: datetime) -> str:
