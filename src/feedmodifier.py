@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import datetime  # , timezone
 from email.utils import format_datetime
+from enum import Enum, auto
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -24,17 +25,12 @@ class FeedModifier(ABC):
     def __init__(
         self,
         input_path: str | Path,
-        url: Optional[str] = None,
+        source_url: Optional[str] = None,
         save_path: Optional[str | Path] = None,
         title_kwargs={"prefix": "[Reruns:] "},
     ) -> None:
         """Initialization."""
-        self.source_url: Optional[str] = None
-        # TODO: URL validation
-        if url is not None:
-            self.source_url = url
-            input_path = self.url_to_file(url, save_path)
-
+        self.source_url: Optional[str] = source_url
         self.input_path: Path = Path(input_path)
         self.tree: ElementTree = ET.parse(self.input_path)
         self.root: Element = self.tree.getroot()
@@ -63,6 +59,71 @@ class FeedModifier(ABC):
         self.channel: Element = self.feed_channel()
 
         self.set_feed_title(**title_kwargs)
+
+    @classmethod
+    def from_url(cls, url, feed_format=None, *args, **kwargs) -> "FeedModifier":
+        """Create a FeedModifier from a given source feed's url."""
+        saved_path = cls.url_to_file(url)
+        kwargs["source_url"] = url
+        return cls.from_file(saved_path, *args, **kwargs)
+
+    @classmethod
+    def from_file(cls, path, feed_format=None, *args, **kwargs) -> "FeedModifier":
+        """Create a FeedModifier from a given source feed's path."""
+        if feed_format is not None:
+            feed_format = (
+                cls._Format.RSS if "rss" in feed_format.lower() else cls._Format.ATOM
+            )
+        else:
+            feed_format = cls._infer_format(path)
+
+        if feed_format == cls._Format.RSS:
+            return RSSFeedModifier(path, *args, **kwargs)
+        elif feed_format == cls._Format.ATOM:
+            return AtomFeedModifier(path, *args, **kwargs)
+        else:
+            raise ValueError("Feed format not found.")
+
+    class _Format(Enum):
+        """Convenience enumeration of the feed formats.
+
+        TODO: Possibly just use booleans? (i.e. `is_rss`?)
+        """
+
+        RSS = auto()
+        ATOM = auto()
+
+    @classmethod
+    def _infer_format(cls, input_path: str | Path) -> _Format:
+        """Guess the format, RSS or Atom, of a given feed file."""
+        path = Path(input_path)
+        if not (path.exists() and path.is_file()):
+            raise ValueError(f"Given path does not refer to a feed file: {path}")
+
+        # Trust the file extension if it specifies .rss or .atom
+        if ".rss" in [suffix.lower() for suffix in path.suffixes]:
+            return cls._Format.RSS
+        elif ".atom" in [suffix.lower() for suffix in path.suffixes]:
+            return cls._Format.ATOM
+
+        # Otherwise, parse the file
+        # TODO: Wasteful to parse the entire file just to infer the feed's
+        # format -- find less wasteful solution?
+        # (E.g. to just check the root element?)
+        tree: ElementTree = ET.parse(path)
+        root: Element = tree.getroot()
+        print(root)
+        print(type(root))
+        print(root.tag)
+        if "rss" in root.tag.lower():
+            return cls._Format.RSS
+        elif "feed" in root.tag.lower():
+            return cls._Format.ATOM
+        else:
+            raise ValueError(
+                f"Format of file {path} could not be determined. "
+                f"Root element: {root.tag}"
+            )
 
     @staticmethod
     def url_to_file(url: str, path: Optional[str | Path] = None) -> str | Path:
