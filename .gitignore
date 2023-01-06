@@ -13,3 +13,4 @@ test/__pycache__/
 
 # Ignore temporary output files
 out/
+test/tmp/
