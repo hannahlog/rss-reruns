@@ -37,7 +37,13 @@ def rss_simple_examples():
 def atom_simple_examples():
     """List of AtomFeedModifiers for simple Atom feeds."""
     return [
-        as_Atom(fname) for fname in ("no_items.atom", "one_item.atom", "two_items.atom")
+        as_Atom(fname)
+        for fname in (
+            "no_items.atom",
+            "one_item.atom",
+            "two_items.atom",
+            "namespaced_two_items.atom",
+        )
     ]
 
 
