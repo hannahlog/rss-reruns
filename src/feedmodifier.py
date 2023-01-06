@@ -36,8 +36,8 @@ class FeedModifier(ABC):
         self.reruns_path = reruns_path if reruns_path is None else Path(reruns_path)
         self.entry_title_prefix = entry_kwargs["prefix"]
 
-        self.tree: ElementTree = ET.parse(self.source_path)
-        self.root: Element = self.tree.getroot()
+        self._tree: ElementTree = ET.parse(self.source_path)
+        self._root: Element = self._tree.getroot()
 
         # Dictionary of XML namespaces to use with `find()`, `findall()`, etc.
         #
@@ -54,13 +54,13 @@ class FeedModifier(ABC):
         # TODO: Review and make sure this replacement is correct and introduces no
         # problems. Possibly use a named function in place of the anonymous
         # comprehension.
-        self.nsmap: dict[str, str] = {
-            (k if k is not None else ""): v for k, v in self.root.nsmap.items()
+        self._nsmap: dict[str, str] = {
+            (k if k is not None else ""): v for k, v in self._root.nsmap.items()
         }
 
         # Element containing metadata and entry/item elements:
         # `feed` for Atom (which is also the root), and `channel` for RSS (not the root)
-        self.channel: Element = self.feed_channel()
+        self._channel: Element = self.feed_channel()
 
         self.set_feed_title(**title_kwargs)
 
@@ -158,7 +158,7 @@ class FeedModifier(ABC):
         if title is not None:
             self._title = title
         else:
-            title_element = self.get_subelement(self.channel, "title")
+            title_element = self.get_subelement(self._channel, "title")
             old_title = (
                 title_element.text
                 if title_element is not None and title_element.text is not None
@@ -257,7 +257,7 @@ class FeedModifier(ABC):
         """Get a specified element's subelement.
 
         The only reason this one-line method exists is to avoid the visual noise of
-        repeatedly providing `self.nsmap` as an argument to Element's `find`.
+        repeatedly providing `self._nsmap` as an argument to Element's `find`.
         Otherwise, `find` would be used directly each time, instead of calling this.
 
         Args:
@@ -269,7 +269,7 @@ class FeedModifier(ABC):
         Returns:
             Optional[Element]: the found subelement, or None if not found.
         """
-        return element.find(subelement_name, self.nsmap)
+        return element.find(subelement_name, self._nsmap)
 
 
 class RSSFeedModifier(FeedModifier):
@@ -278,7 +278,7 @@ class RSSFeedModifier(FeedModifier):
     def feed_channel(self) -> Element:
         """Returns the `feed` (Atom) or `channel` (RSS) element of the tree."""
         # For RSS, the `channel` element is a child of the root `rss` element
-        channel = self.root.find("channel", self.nsmap)
+        channel = self._root.find("channel", self._nsmap)
         if channel is None:
             raise ValueError("RSS feed must contain `channel` element (not found).")
         else:
@@ -286,7 +286,7 @@ class RSSFeedModifier(FeedModifier):
 
     def feed_entries(self) -> Sequence[Element]:
         """Returns iterator over the feed's item elements."""
-        return self.channel.findall("item", self.nsmap)
+        return self._channel.findall("item", self._nsmap)
 
     def update_entry_pubdate(self, entry: Element, date: datetime) -> list[Element]:
         """Update a given entry/item's date of publication."""
@@ -326,11 +326,11 @@ class AtomFeedModifier(FeedModifier):
     def feed_channel(self) -> Element:
         """Returns the `feed` (Atom) or `channel` (RSS) element of the tree."""
         # For Atom, the `feed` element is the root itself
-        return self.root
+        return self._root
 
     def feed_entries(self) -> Sequence[Element]:
         """Returns iterator over the feed's entry elements."""
-        return self.channel.findall("entry", self.nsmap)
+        return self._channel.findall("entry", self._nsmap)
 
     def update_entry_pubdate(self, entry: Element, date: datetime) -> list[Element]:
         """Update a given entry/item's date of publication."""
