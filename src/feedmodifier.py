@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import datetime  # , timezone
 from email.utils import format_datetime
-from enum import Enum, auto
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -71,30 +70,16 @@ class FeedModifier(ABC):
     def from_file(cls, path, feed_format=None, *args, **kwargs) -> "FeedModifier":
         """Create a FeedModifier from a given source feed's path."""
         if feed_format is not None:
-            feed_format = (
-                cls._Format.RSS if "rss" in feed_format.lower() else cls._Format.ATOM
+            concrete_subclass = (
+                RSSFeedModifier if "rss" in feed_format.lower() else AtomFeedModifier
             )
         else:
-            feed_format = cls._infer_format(path)
+            concrete_subclass = cls._infer_format(path)
 
-        if feed_format == cls._Format.RSS:
-            return RSSFeedModifier(path, *args, **kwargs)
-        elif feed_format == cls._Format.ATOM:
-            return AtomFeedModifier(path, *args, **kwargs)
-        else:
-            raise ValueError("Feed format not found.")
-
-    class _Format(Enum):
-        """Convenience enumeration of the feed formats.
-
-        TODO: Possibly just use booleans? (i.e. `is_rss`?)
-        """
-
-        RSS = auto()
-        ATOM = auto()
+        return concrete_subclass(path, *args, **kwargs)
 
     @classmethod
-    def _infer_format(cls, input_path: str | Path) -> _Format:
+    def _infer_format(cls, input_path: str | Path) -> type["FeedModifier"]:
         """Guess the format, RSS or Atom, of a given feed file."""
         path = Path(input_path)
         if not (path.exists() and path.is_file()):
@@ -102,9 +87,9 @@ class FeedModifier(ABC):
 
         # Trust the file extension if it specifies .rss or .atom
         if ".rss" in [suffix.lower() for suffix in path.suffixes]:
-            return cls._Format.RSS
+            return RSSFeedModifier
         elif ".atom" in [suffix.lower() for suffix in path.suffixes]:
-            return cls._Format.ATOM
+            return AtomFeedModifier
 
         # Otherwise, parse the file
         # TODO: Wasteful to parse the entire file just to infer the feed's
@@ -112,13 +97,11 @@ class FeedModifier(ABC):
         # (E.g. to just check the root element?)
         tree: ElementTree = ET.parse(path)
         root: Element = tree.getroot()
-        print(root)
-        print(type(root))
-        print(root.tag)
+
         if "rss" in root.tag.lower():
-            return cls._Format.RSS
+            return RSSFeedModifier
         elif "feed" in root.tag.lower():
-            return cls._Format.ATOM
+            return AtomFeedModifier
         else:
             raise ValueError(
                 f"Format of file {path} could not be determined. "
@@ -232,6 +215,10 @@ class FeedModifier(ABC):
 
     def get_subelement(self, element: Element, subelement_name: str) -> Element | None:
         """Get a specified element's subelement.
+
+        The only reason this one-line method exists is to avoid the visual noise of
+        repeatedly providing `self.nsmap` as an argument to Element's `find`.
+        Otherwise, `find` would be used directly each time, instead of calling this.
 
         Args:
             entry (Element):
