@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
     <channel>
-        <title>An RSS Blog - Daily News and Information Related to RSS Feeds, Syndication and Aggregation.</title>
-        <description>Daily RSS Blog and news related to RSS, really simple syndication, rdf, blogs, syndication and news aggregation. Information related to marketing RSS, new RSS software releases, beta test opportunities, new RSS directories and discussions of opportunities related to RSS.</description>
-        <link>http://www.rss-specifications.com/blog.htm</link>
+        <title>Example RSS Blog Title</title>
+        <description>This is a description.</description>
+        <link>http://example.com/notarealblogurl.htm</link>
         <lastBuildDate>Mon, 15 Mar 2021 14:32:20 -0400</lastBuildDate>
         <pubDate>Tue, 28 Nov 2006 09:00:00 -0500</pubDate>
         <generator>FeedForAll v2.0 (2.0.1.0) http://www.feedforall.com</generator>
         <image>
-            <url>http://www.rss-specifications.com/rss-spec-rss.gif</url>
-            <title>RSS Specifications</title>
-            <link>http://www.rss-specifications.com</link>
-            <description>RSS specifications, everything you need to know about rss.</description>
+            <url>http://www.example.com/example-rss-image.gif</url>
+            <title>Image Title</title>
+            <link>http://example.com</link>
+            <description>Image description.</description>
             <width>88</width>
             <height>31</height>
         </image>

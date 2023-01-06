@@ -100,7 +100,7 @@ def test_url_to_file_invalid_url(bad_url, expected_exception):
 @pytest.mark.parametrize(
     "url_404",
     [
-        "https://google.com/this-will-404-not-a-real-url-34454127.xml",
+        "https://example.com/this-will-404-not-a-real-url-34454127.xml",
     ],
 )
 def test_url_to_file_404(url_404):

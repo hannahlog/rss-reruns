@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed
+	xmlns="http://www.w3.org/2005/Atom"
+	xmlns:thr="http://purl.org/syndication/thread/1.0" xml:lang="en-US">
+	<title type="text">Example Atom Feed Title</title>
+	<subtitle type="text">Example Atom Feed Subtitle</subtitle>
+	<updated>2022-12-16T09:32:57Z</updated>
+	<link rel="alternate" type="text/html" href="https://www.example.org/blog/news" />
+	<id>https://www.example.org/blog/news/feed/atom</id>
+	<link rel="self" type="application/atom+xml" href="https://www.example.org/blog/news/feed/atom" />
+	<generator uri="https://wordpress.org/" version="6.1.1">WordPress</generator>
+	<entry>
+		<author>
+			<name>Sonic Hedgehog</name>
+		</author>
+		<title type="html">
+			<![CDATA[Entry Title. Does this really need to be in a CDATA block?]]>
+		</title>
+		<link rel="alternate" type="text/html" href="https://www.example.org/blog/news/archives/9787" />
+		<id>https://www.example.org/blog/news/?p=9787</id>
+		<updated>2022-12-16T09:31:09Z</updated>
+		<published>2022-12-16T09:31:09Z</published>
+		<category scheme="https://www.example.org/blog/news" term="Home Page Stories" />
+		<category scheme="https://www.example.org/blog/news" term="Top Story" />
+		<category scheme="https://www.example.org/blog/news" term="Uncategorized" />
+		<summary type="html">
+			<![CDATA[This is the summary. [&#8230;]]]>
+		</summary>
+		<content type="html" xml:base="https://www.example.org/blog/news/archives/9787">
+			<![CDATA[<p>This is the content!</p> ]]>
+		</content>
+	</entry>
+	<entry>
+		<author>
+			<name>Knuckles Echidna</name>
+		</author>
+		<title type="html">
+			<![CDATA[First Public Working Draft: Portable Network Graphics (PNG) Specification (Third Edition)]]>
+		</title>
+		<link rel="alternate" type="text/html" href="https://www.example.org/blog/news/archives/9718" />
+		<id>https://www.example.org/blog/news/?p=9718</id>
+		<updated>2022-11-23T09:44:05Z</updated>
+		<published>2022-10-25T09:46:14Z</published>
+		<category scheme="https://www.example.org/blog/news" term="Publication" />
+		<category scheme="https://www.example.org/blog/news" term="Web Design and Applications" />
+		<summary type="html">
+			<![CDATA[This, too, is a summary. [&#8230;]]]>
+		</summary>
+		<content type="html" xml:base="https://www.example.org/blog/news/archives/9718">
+			<![CDATA[<p>This <a href="https://www.example.org/groups/wg/png">link</a> is related to <a href="https://www.example.org/TR/2022/WD-png-3-20221025/">another link</a>. Here's a list: </p><ul class="show_items"><li><strong>Emphasized</strong>, some other words</li><li><strong>Also Emphasized</strong>, and also some other words</li><li>Support for <strong>Emphasized Last</strong></li></ul><p> Some final words.</p> ]]>
+		</content>
+	</entry>
+</feed>

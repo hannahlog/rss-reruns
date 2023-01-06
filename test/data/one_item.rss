@@ -1,31 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
     <channel>
-        <title>An RSS Blog - Daily News and Information Related to RSS Feeds, Syndication and Aggregation.</title>
-        <description>Daily RSS Blog and news related to RSS, really simple syndication, rdf, blogs, syndication and news aggregation. Information related to marketing RSS, new RSS software releases, beta test opportunities, new RSS directories and discussions of opportunities related to RSS.</description>
-        <link>http://www.rss-specifications.com/blog.htm</link>
+        <title>Example RSS Blog Title</title>
+        <description>This is a description.</description>
+        <link>http://example.com/notarealblogurl.htm</link>
         <lastBuildDate>Mon, 15 Mar 2021 14:32:20 -0400</lastBuildDate>
         <pubDate>Tue, 28 Nov 2006 09:00:00 -0500</pubDate>
         <generator>FeedForAll v2.0 (2.0.1.0) http://www.feedforall.com</generator>
         <image>
-            <url>http://www.rss-specifications.com/rss-spec-rss.gif</url>
-            <title>RSS Specifications</title>
-            <link>http://www.rss-specifications.com</link>
-            <description>RSS specifications, everything you need to know about rss.</description>
+            <url>http://www.example.com/example-rss-image.gif</url>
+            <title>Image Title</title>
+            <link>http://example.com</link>
+            <description>Image description.</description>
             <width>88</width>
             <height>31</height>
         </image>
         <item>
-            <title>The Top 6 Social Media Trends of 2021</title>
-            <description>Is your social media marketing approach in line with the latest usage and behavioral trends?&lt;br /&gt;
-&lt;br /&gt;
-The use of digital platforms changed significantly over the course of 2020, with the lockdowns and COVID mitigation efforts forcing people to find alternate ways to socialize, to shop, and to work, all of which have flow-on effects. That&apos;s sparked new trends, like audio social, and new approaches in how businesses connect with their target markets.&lt;br /&gt;
-&lt;br /&gt;
-If you&apos;re not aware of these shifts, you may limiting your marketing performance. To provide some more perspective, the team from tech.co recently put together a listing of six key digital usage trends that could influencer your strategic approach.&lt;br /&gt;
-&lt;br /&gt;
-You can check out their six key trends in the below graphic, which might help in your planning. </description>
-            <link>http://www.rss-specifications.com/blog.htm#2661</link>
-            <pubDate>Wed, 26 May 2021 14:22:59 -0400</pubDate>
+            <title>First Post Title</title>
+            <description>First post description.</description>
+            <link>http://example.com/notarealblogurl.htm#2660</link>
+            <pubDate>Wed, 19 May 2005 14:21:35 -0400</pubDate>
         </item>
     </channel>
 </rss>
