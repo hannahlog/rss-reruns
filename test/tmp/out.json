@@ -1,0 +1,6 @@
+{
+    "feed_format": "<class 'feedmodifier.RSSFeedModifier'>",
+    "source_path": "test/data/two_items.rss",
+    "reruns_path": "None",
+    "entry_title_prefix": "[Rerun:]"
+}

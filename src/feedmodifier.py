@@ -1,5 +1,6 @@
 """Modify a given XML-based feed (RSS or Atom)."""
 
+import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import datetime  # , timezone
@@ -23,15 +24,19 @@ class FeedModifier(ABC):
 
     def __init__(
         self,
-        input_path: str | Path,
+        source_path: str | Path,
         source_url: Optional[str] = None,
-        save_path: Optional[str | Path] = None,
+        reruns_path: Optional[str | Path] = None,
         title_kwargs={"prefix": "[Reruns:] "},
+        entry_kwargs={"prefix": "[Rerun:]"},
     ) -> None:
         """Initialization."""
         self.source_url: Optional[str] = source_url
-        self.input_path: Path = Path(input_path)
-        self.tree: ElementTree = ET.parse(self.input_path)
+        self.source_path: Path = Path(source_path)
+        self.reruns_path = reruns_path if reruns_path is None else Path(reruns_path)
+        self.entry_title_prefix = entry_kwargs["prefix"]
+
+        self.tree: ElementTree = ET.parse(self.source_path)
         self.root: Element = self.tree.getroot()
 
         # Dictionary of XML namespaces to use with `find()`, `findall()`, etc.
@@ -165,6 +170,41 @@ class FeedModifier(ABC):
                 self._title = func(old_title)
 
         return self._title
+
+    def serialize(
+        self,
+        meta_file_path: str | Path,
+    ) -> None:
+        """Serialize FeedModifier to json file."""
+        meta = {
+            "feed_format": str(type(self)),
+            "source_path": str(self.source_path),
+            "reruns_path": str(self.reruns_path),
+            "entry_title_prefix": self.entry_title_prefix,
+        }
+
+        with open(meta_file_path, "w") as f:
+            # f.write(json_contents)
+            json.dump(meta, f, ensure_ascii=False, indent=4)
+        pass
+
+    @classmethod
+    def deserialize(cls, meta_file_path: str | Path) -> "FeedModifier":
+        """Deserialize from json to an RSSFeedModifier or AtomFeedModifier."""
+        with open(meta_file_path, "r") as f:
+            meta = json.load(f)
+            required_keys = {
+                "source_path",
+                "reruns_path",
+                "feed_format",
+                "entry_title_prefix",
+            }
+            missing_keys = required_keys - meta.keys()
+            if missing_keys:
+                raise ValueError(
+                    "Meta file {meta_file_path} missing required keys: {missing_keys}"
+                )
+            return cls.from_file(**meta)
 
     @abstractmethod
     def feed_channel(self) -> Element:
