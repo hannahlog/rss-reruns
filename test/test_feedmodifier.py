@@ -1,38 +1,29 @@
 """FeedModifier test cases (with PyTest)."""
 
-import itertools
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from time import sleep
 
 import pytest
 import requests
 from dateutil import parser
+from lxml import etree as ET
 
 from feedmodifier import AtomFeedModifier, FeedModifier, RSSFeedModifier
 
-tmp_dir = "test/tmp/"
-Path(tmp_dir).mkdir(exist_ok=True)
-
-
-def fname_to_tmp_path(fname: str) -> str:
-    """Prepend the tmp directory to a given filename."""
-    return "".join([tmp_dir, fname])
-
-
-def fname_to_path(fname: str) -> str:
-    """Prepend the test data directory to a given filename."""
-    return "".join(["test/data/", fname])
+tmp_dir = Path("test/tmp/")
+tmp_dir.mkdir(exist_ok=True)
+data_dir = Path("test/data/")
 
 
 def as_RSS(filename: str, **kwargs) -> RSSFeedModifier:
     """Initialize RSSFeedModifier with the given RSS feed."""
-    return RSSFeedModifier(Path(fname_to_path(filename)), **kwargs)
+    return RSSFeedModifier(data_dir / filename, **kwargs)
 
 
 def as_Atom(filename: str, **kwargs) -> AtomFeedModifier:
     """Initialize AtomFeedModifier with the given Atom feed."""
-    return AtomFeedModifier(Path(fname_to_path(filename)), **kwargs)
+    return AtomFeedModifier(data_dir / filename, **kwargs)
 
 
 @pytest.fixture
@@ -53,6 +44,12 @@ def simple_atom_fnames():
 
 
 @pytest.fixture
+def simple_fnames(simple_atom_fnames, simple_rss_fnames):
+    """List of paths for simple Atom feeds."""
+    return (*simple_atom_fnames, *simple_rss_fnames)
+
+
+@pytest.fixture
 def simple_rss_fms(simple_rss_fnames):
     """List of RSSFeedModifiers for simple RSS feeds."""
     return (as_RSS(fname) for fname in simple_rss_fnames)
@@ -64,29 +61,35 @@ def simple_atom_fms(simple_atom_fnames):
     return (as_Atom(fname) for fname in simple_atom_fnames)
 
 
+@pytest.fixture
+def simple_fms(simple_atom_fms, simple_rss_fms):
+    """List of AtomFeedModifiers for simple Atom feeds."""
+    return (*simple_atom_fms, *simple_rss_fms)
+
+
 def test_RSSFeedModifier_init(simple_rss_fms):
     """Test initialization performs correctly for RSSFeedModifiers."""
     for rss_fm in simple_rss_fms:
-        assert rss_fm.tree is not None
-        assert rss_fm.root is not None
-        assert rss_fm.channel is not None
+        assert rss_fm._tree is not None
+        assert rss_fm._root is not None
+        assert rss_fm._channel is not None
 
 
 def test_AtomFeedModifier_init(simple_atom_fms):
     """Test initialization performs correctly for AtomFeedModifiers."""
     for atom_fm in simple_atom_fms:
-        assert atom_fm.tree is not None
-        assert atom_fm.root is not None
-        assert atom_fm.channel is not None
+        assert atom_fm._tree is not None
+        assert atom_fm._root is not None
+        assert atom_fm._channel is not None
 
 
-def test_from_file(simple_rss_fnames, simple_atom_fnames):
+def test_from_file(simple_fnames):
     """Test factory method from_file for creating FeedModifiers."""
-    for fname in (*simple_rss_fnames, *simple_atom_fnames):
-        fm = FeedModifier.from_file(fname_to_path(fname))
-        assert fm.tree is not None
-        assert fm.root is not None
-        assert fm.channel is not None
+    for fname in simple_fnames:
+        fm = FeedModifier.from_file(data_dir / fname)
+        assert fm._tree is not None
+        assert fm._root is not None
+        assert fm._channel is not None
 
 
 # TODO: better way to organize/write this? :(
@@ -96,22 +99,26 @@ def test_from_file(simple_rss_fnames, simple_atom_fnames):
         # No path specified: expect default
         (
             (rss_url := "http://www.rss-specifications.com/blog-feed.xml", None),
-            "feed.xml",
+            "downloads/feed.xml",
         ),
-        # Path specified as "test/tmp/my-filename.rss" string
-        ((rss_url, tmp_path := tmp_dir + "my-filename.rss"), tmp_path),
-        # Same path but given as a Path object
-        ((rss_url, Path(tmp_path)), tmp_path),
+        # Path given as Path object
+        ((rss_url, tmp_path := tmp_dir / "my_filename.rss"), tmp_path),
+        # Same path but given as a string ("test/tmp/my-filename.rss")
+        ((rss_url, str(tmp_path)), tmp_path),
     ],
 )
 def test_url_to_file(args, expected_path):
     """Test `url_to_file` with or without a path specified."""
     saved_path = FeedModifier.url_to_file(*args)
-    assert saved_path == expected_path
-    file = Path(saved_path)
-    assert file.exists()
-    assert file.is_file()
-    file.unlink()
+    assert saved_path == Path(expected_path)
+    assert str(saved_path) == str(expected_path)
+    assert saved_path.exists()
+    assert saved_path.is_file()
+
+    # Clean up downloaded file and the default /downloads/ directory if it exists
+    saved_path.unlink()
+    if Path("downloads").exists():
+        Path("downloads").rmdir()
 
 
 # TODO: this is effectively a test for `requests.get`: consider removal?
@@ -144,61 +151,24 @@ def test_url_to_file_404(url_404):
     )
 
 
-def test_serialize(simple_atom_fms, simple_rss_fms):
-    """Test serialization method serialize() (writes to json file)."""
-    for fm in (*simple_atom_fms, *simple_rss_fms):
-        meta_path = fname_to_tmp_path("out.json")
-        fm.serialize(meta_path)
+def test_write(simple_fnames, simple_fms):
+    """Test writing the modified feed (and associated FeedModifier data) to XML."""
+    for fname, fm in zip(simple_fnames, simple_fms):
+        out_path = tmp_dir / fname
+        fm.write(out_path)
         # TODO: actually write these tests, expected output files, etc.
+        deserialized = fm.from_file(out_path)
+        # assert fm._same_attributes(deserialized)
         pass
 
 
-def test_deserialize(simple_atom_fms, simple_rss_fms):
-    """Test deserialization classmethod deserialize() (from json file)."""
-    # TODO: actually write these tests
-    pass
-
-
-@pytest.mark.parametrize("fms", ["simple_atom_fms", "simple_rss_fms"])
-def test_set_title_too_many_kwargs(fms, request):
-    """Confirm `set_title` raises error if given too many kwargs."""
-    fms = request.getfixturevalue(fms)
-
-    all_kwargs = {
-        "title": "My New Title",
-        "prefix": "New Title's Prefix: ",
-        "func": str.upper,
-    }
-
-    # List of all length-2 combinations, e.g.
-    #   {"title": "My New Title", "func": str.upper}
-    choose_two_kwargs: list[dict[str:Any]] = [
-        {k: v for k, v in i} for i in itertools.combinations(all_kwargs.items(), 2)
-    ]
-
-    # For already-initialized FeedModifiers:
-    for fm in fms:
-        for two_kwargs in choose_two_kwargs:
-            # Giving exactly two keyword arguments:
-            with pytest.raises(ValueError) as exc_info:
-                fm.set_feed_title(**two_kwargs)
-            assert exc_info.value.args[0] == "Expected exactly one kwarg, found: 2"
-
-        # Giving all three keyword arguments:
-        with pytest.raises(ValueError) as exc_info:
-            fm.set_feed_title(**all_kwargs)
-        assert exc_info.value.args[0] == "Expected exactly one kwarg, found: 3"
-
-
-@pytest.mark.parametrize("fms", ["simple_atom_fms", "simple_rss_fms"])
-def test_set_title_no_kwargs(fms, request):
-    """Confirm `set_title` raises error if given too few (i.e. zero) kwargs."""
-    fms = request.getfixturevalue(fms)
-    # For already-initialized FeedModifiers:
-    for fm in fms:
-        with pytest.raises(ValueError) as exc_info:
-            fm.set_feed_title()
-        assert exc_info.value.args[0] == "Expected exactly one kwarg, found: 0"
+def test_same_attributes(simple_fms):
+    """Test the `_same_attributes` method (used in testing [de]serialization)."""
+    other_fm = as_Atom("two_items.atom")
+    other_fm.entry_title_prefix = "56546576576576576"
+    for fm in simple_fms:
+        assert fm._same_attributes(fm)
+        assert not fm._same_attributes(other_fm)
 
 
 def rss_len_examples() -> tuple[RSSFeedModifier, int]:
@@ -219,45 +189,41 @@ def atom_len_examples() -> tuple[AtomFeedModifier, int]:
     ]
 
 
-@pytest.mark.parametrize("rss_fm, expected_len", rss_len_examples())
-def test_RSSFeedModifier_feed_entries_len(rss_fm, expected_len):
+@pytest.mark.parametrize(
+    "fm, expected_len", (*rss_len_examples(), *atom_len_examples())
+)
+def test_feed_entries_len(fm, expected_len):
     """Test feed_entries() for RSSFeedModifiers."""
-    assert len(rss_fm.feed_entries()) == expected_len
+    assert len(fm.feed_entries()) == expected_len
 
 
-@pytest.mark.parametrize("atom_fm, expected_len", atom_len_examples())
-def test_AtomFeedModifier_feed_entries_len(atom_fm, expected_len):
-    """Test feed_entries() for AtomFeedModifiers."""
-    assert len(atom_fm.feed_entries()) == expected_len
-
-
-@pytest.mark.parametrize("fms", ["simple_atom_fms", "simple_rss_fms"])
-def test_set_subelement_text(fms, request):
+def test_set_subelement_text(simple_fms):
     """Test `set_subelement_text` for FeedModifiers."""
-    fms = request.getfixturevalue(fms)
-    # (Skip FeedModifiers with 0 entries)
-    fms = [fm for fm in fms if len(fm.feed_entries()) > 0]
-
-    for fm in fms:
+    for fm in simple_fms:
         num_entries = len(fm.feed_entries())
         contents = []
         for index, entry in enumerate(fm.feed_entries()):
+            # print(ET.tostring(entry["content"]._element))
+            # print(ET.tostring(entry["content"].text))
             new_content = f"The content is {index}"
-            content_element = fm.set_subelement_text(entry, "content", new_content)
-            contents.append((content_element, new_content))
+            entry["content"].text = new_content
+            print(ET.tostring(entry["content"]._element))
+            # content_element = fm.lu.set_subelement_text(entry, "content", new_content)
+            contents.append((entry["content"], new_content))
 
         # The number of entries should remain the same
         assert len(fm.feed_entries()) == num_entries
 
         # Check that the element texts have been updated correctly, and that updating
         # one entry's subelement did not affect a different entry's subelement.
-        for element, content in contents:
-            assert element.text == content
+        for entry, content in contents:
+            assert entry.text == content
+            assert entry._element.text == content
 
 
-def test_update_entry_pubdate(simple_atom_fms, simple_rss_fms):
+def test_update_entry_pubdate(simple_fms):
     """Test `update_entry_pubdate` for FeedModifiers."""
-    for fm in [*simple_atom_fms, *simple_rss_fms]:
+    for fm in simple_fms:
         num_entries = len(fm.feed_entries())
         elements_dates = []
         for entry in fm.feed_entries():
@@ -285,6 +251,7 @@ def test_update_entry_pubdate(simple_atom_fms, simple_rss_fms):
 
             # Check that the datetimes were set as expected
             for el in elements:
+                print(el)
                 assert el.text == fm.format_datetime(dt)
 
 
@@ -317,3 +284,32 @@ def test_AtomFeedModifier_format_datetime_simple():
         dt_parsed = parser.parse(dt)
         dt_formatted = AtomFeedModifier.format_datetime(dt_parsed)
         assert dt == dt_formatted
+
+
+def w3c_feed_validator(path: Path | str) -> bool:
+    """Validate an Atom/RSS feed through the W3C's public validation service."""
+    base_uri = "http://validator.w3.org/feed/check.cgi"
+    # At LEAST 1 second delay between requests is required
+    sleep(2)
+
+    with open(path, "r") as f:
+        feed = f.read()
+
+    response = requests.post(
+        base_uri,
+        params={"rawdata": feed, "output": "soap12"},
+        headers={"Content-type": "application/xml"},
+    )
+    print(response)
+    print(response.content)
+    print("============================")
+    response_file = "w3c_out.xml"
+    with open(response_file, "wb") as f:
+        f.write(response.content)
+    tree = ET.parse(response_file)
+    tree.write(response_file, pretty_print=True, xml_declaration=True, encoding="utf-8")
+    return True
+
+
+if False:
+    w3c_feed_validator(data_dir / "namespaced_two_items.atom")

@@ -1,19 +1,23 @@
 """Modify a given XML-based feed (RSS or Atom)."""
 
-import json
+import copy
+import email.utils
+import random
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
-from datetime import datetime  # , timezone
-from email.utils import format_datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Optional
 
 import requests
+from dateutil import parser
 from lxml import etree as ET
+
+from elementwrapper import ElementWrapper, ElementWrapperFactory
 
 # Underscores present because those are the class names in lxml.etree
 Element = ET._Element
 ElementTree = ET._ElementTree
+QName = ET.QName
 
 
 class FeedModifier(ABC):
@@ -24,50 +28,108 @@ class FeedModifier(ABC):
 
     def __init__(
         self,
-        source_path: str | Path,
-        source_url: Optional[str] = None,
-        reruns_path: Optional[str | Path] = None,
-        title_kwargs={"prefix": "[Reruns:] "},
-        entry_kwargs={"prefix": "[Rerun:]"},
+        path: str | Path,
+        schedule_kwargs: Optional[Any] = None,
+        run_forever: Optional[bool] = None,
+        title_kwargs: dict[str, Any] = {},
+        entry_title_kwargs: dict[str, str] = {},
     ) -> None:
         """Initialization."""
-        self.source_url: Optional[str] = source_url
-        self.source_path: Path = Path(source_path)
-        self.reruns_path = reruns_path if reruns_path is None else Path(reruns_path)
-        self.entry_title_prefix = entry_kwargs["prefix"]
+        self.path: Path = Path(path)
 
-        self._tree: ElementTree = ET.parse(self.source_path)
-        self._root: Element = self._tree.getroot()
+        # If blank text is preserved, then `ET.write` will not properly indent
+        # any newly added elements which contain text, even with pretty printing.
+        # However, if the parser removes blank text, then `write()` will add new
+        # indentation to the entire document, so all elements wil be properly indented
+        # (if pretty printing is enabled.)
+        #
+        # See: "Why doesn't the pretty_print option reformat my XML output?"
+        # lxml.de/FAQ.html#why-doesn-t-the-pretty-print-option-reformat-my-xml-output
+        parser = ET.XMLParser(remove_blank_text=True, strip_cdata=False)
+        self._tree: ElementTree = ET.parse(self.path, parser=parser)
+        root = self._tree.getroot()
 
-        # Dictionary of XML namespaces to use with `find()`, `findall()`, etc.
-        #
-        # The extra logic is due to the representation of a Default Namespace
-        # in the `root.nsmap` dictionary -- if there is a default namespace, its
-        # key is `None` rather than an empty string. This makes Mypy find its
-        # keys to have type `Optional[str]` instead of `str`, which unfortunately
-        # makes it believe the dictionary is incompatible with the type signature
-        # of `find()`, `findall()` etc.
-        #
-        # This comprehension creates an equivalent dictionary, but replacing a `None`
-        # key with an empty string `""` if encountered.
-        #
-        # TODO: Review and make sure this replacement is correct and introduces no
-        # problems. Possibly use a named function in place of the anonymous
-        # comprehension.
-        self._nsmap: dict[str, str] = {
-            (k if k is not None else ""): v for k, v in self._root.nsmap.items()
-        }
+        # Prefix and URI for the `reruns` XML namespace
+        self._ns_prefix = "reruns"
+        self._ns_uri = "https://github.com/hannahlog/rss-reruns"
+
+        # Local names of elements containing feed and entry data
+        self._meta_channel_tag = f"{self._ns_prefix}:channel_data"
+        self._meta_entry_tag = f"{self._ns_prefix}:entry_data"
+
+        # Declaration added to the root element as
+        #   `xmlns:reruns="https://github.com/hannahlog/rss-reruns"`
+        self.add_namespace(prefix=self._ns_prefix, uri=self._ns_uri)
+        self._nsmap = self._clean_nsmap(root.nsmap)
+
+        self.default_EWF = ElementWrapperFactory("" if "" in self._nsmap else None)
+        self.reruns_EWF = ElementWrapperFactory(self._ns_prefix)
 
         # Element containing metadata and entry/item elements:
-        # `feed` for Atom (which is also the root), and `channel` for RSS (not the root)
-        self._channel: Element = self.feed_channel()
+        # `feed` for Atom (which is also the root), `channel` for RSS (not the root)
+        self._root: ElementWrapper = self.default_EWF(root)
+        self._channel: ElementWrapper = self.feed_channel()
+
+        self._meta_channel: ElementWrapper = self._channel[self._meta_channel_tag]
+        self._create_missing_elements()
+
+        if run_forever is not None:
+            self.run_forever = run_forever
 
         self.set_feed_title(**title_kwargs)
+        self.set_entry_titles(**entry_title_kwargs)
+
+    def _clean_nsmap(self, nsmap: dict[Optional[str], str]) -> dict[str, str]:
+        """Replace `None` keys with empty strings."""
+        return {(k or ""): v for k, v in nsmap.items()}
+
+    def add_namespace(self, prefix: str, uri: str) -> None:
+        """Add the given namespace to the root element (if not already present)."""
+        nsmap = {k: v for k, v in self._tree.getroot().nsmap.items() if k}
+        nsmap[prefix] = uri
+
+        # All pre-existing namespaces are kept.
+        # If a default namespace was present, it will be kept, even though it
+        # is not included here in nsmap or all_prefixes.
+        all_prefixes = list(nsmap)
+        ET.cleanup_namespaces(
+            self._tree, top_nsmap=nsmap, keep_ns_prefixes=all_prefixes
+        )
+        pass
+
+    def _create_missing_elements(self):
+        """Fill missing elements in the `reruns` namespace with default values."""
+        meta_channel_defaults = {
+            "order": "chronological",
+            "rate": "1",
+            "run_forever": "True",
+            "original_title": self._channel["title"].text or "",
+            "title_prefix": "[Reruns:]",
+            "entry_title_prefix": "[Rerun:]",
+            "entry_title_suffix": "(Originally published: %b %d %Y)",
+        }
+        for tag, text in meta_channel_defaults.items():
+            # Defaults do not override already-existing elements or their texts
+            self._meta_channel[tag].text = self._meta_channel[tag].text or text
+
+        for entry in self.feed_entries():
+            entry_meta = entry[self._meta_entry_tag]
+            meta_entry_defaults = {
+                "original_pubdate": self.get_entry_pubdate(entry),
+                "original_title": entry["title"].text or "",
+                "reran": "False",
+            }
+            for tag, text in meta_entry_defaults.items():
+                # Defaults do not override already-existing elements or their texts
+                entry_meta[tag].text = entry_meta[tag].text or text
+        pass
 
     @classmethod
-    def from_url(cls, url, feed_format=None, *args, **kwargs) -> "FeedModifier":
+    def from_url(
+        cls, url, path=None, feed_format=None, *args, **kwargs
+    ) -> "FeedModifier":
         """Create a FeedModifier from a given source feed's url."""
-        saved_path = cls.url_to_file(url)
+        saved_path = cls.url_to_file(url, path)
         kwargs["source_url"] = url
         return cls.from_file(saved_path, *args, **kwargs)
 
@@ -84,9 +146,9 @@ class FeedModifier(ABC):
         return concrete_subclass(path, *args, **kwargs)
 
     @classmethod
-    def _infer_format(cls, input_path: str | Path) -> type["FeedModifier"]:
+    def _infer_format(cls, path: str | Path) -> type["FeedModifier"]:
         """Guess the format, RSS or Atom, of a given feed file."""
-        path = Path(input_path)
+        path = Path(path)
         if not (path.exists() and path.is_file()):
             raise ValueError(f"Given path does not refer to a feed file: {path}")
 
@@ -99,9 +161,8 @@ class FeedModifier(ABC):
         # Otherwise, parse the file
         # TODO: Wasteful to parse the entire file just to infer the feed's
         # format -- find less wasteful solution?
-        # (E.g. to just check the root element?)
-        tree: ElementTree = ET.parse(path)
-        root: Element = tree.getroot()
+        # (To just check the root element?)
+        root: Element = ET.parse(path).getroot()
 
         if "rss" in root.tag.lower():
             return RSSFeedModifier
@@ -114,26 +175,59 @@ class FeedModifier(ABC):
             )
 
     @staticmethod
-    def url_to_file(url: str, path: Optional[str | Path] = None) -> str | Path:
+    def url_to_file(url: str, path: Optional[str | Path] = None) -> Path:
         """Download and save XML from given URL."""
-        path = path if path is not None else "feed.xml"
+        path = Path(path or "downloads/feed.xml")
         response = requests.get(url)
         if not response.ok:
             raise ValueError(
                 f"Requested url {url} returned status code: {response.status_code}"
             )
+
+        path.parents[0].mkdir(exist_ok=True, parents=True)
         with open(path, "wb") as f:
             f.write(response.content)
-        return str(path)
+        return path
+
+    @property
+    def run_forever(self):
+        """Getter function for retrieving `forever` text from the etree."""
+        return self._meta_channel["forever"].text.lower() == "true"
+
+    @run_forever.setter
+    def run_forever(self, forever: bool | str):
+        """Setter function for setting `forever` text in the etree."""
+        if str(forever).capitalize() in {"True", "False"}:
+            self._meta_channel["forever"].text = str(forever).capitalize()
+        else:
+            raise ValueError(
+                f"Invalid value {forever} for `forever`: expected True or False."
+            )
+        pass
+
+    def __getitem__(self, name) -> str:
+        """Access meta channel subelements as if they're items of the FeedModifier."""
+        return self._meta_channel[name].text
+
+    def __setitem__(self, name, value):
+        """Access meta channel subelements as if they're items of the FeedModifier."""
+        self._meta_channel[name].text = value
+        pass
+
+    def __delitem__(self, name):
+        """Access meta channel subelements as if they're items of the FeedModifier."""
+        del self._meta_channel[name]
+        pass
 
     def set_feed_title(
         self,
         *,
-        title: str | None = None,
         prefix: str | None = None,
-        func: Callable[[str], str] | None = None,
+        suffix: str | None = None,
     ) -> str:
-        """Specify the new feed's title, either exactly, or with a prefix or function.
+        """Specify the new feed's title by a prefix and suffix string.
+
+        TODO: Functionality overhauled: rewrite docstring.
 
         The new title may be specified through exactly one of the keyword arguments:
         `title` to give an exact string, `prefix` to prepend a string to the original
@@ -141,84 +235,215 @@ class FeedModifier(ABC):
         creates a new title string.
 
         Args:
-            title (str):
-                Exact string to use as the republished feed's title.
-            prefix (str):
+            prefix (str | None):
                 String to prepend to the original title.
-            func (str -> str):
-                Function taking the original title and returning the new title.
+            suffix (str | None):
+                Suffix to append to the original title.
 
         Returns:
             str: the title of the republished feed, as it will be written to file.
         """
-        num_kwargs = len([arg for arg in (title, prefix, func) if arg is not None])
-        if num_kwargs != 1:
-            raise ValueError(f"Expected exactly one kwarg, found: {num_kwargs}")
+        # Set the new prefix and suffix strings if given
+        if prefix:
+            self.title_prefix = prefix
+        if suffix:
+            self.title_suffix = suffix
 
-        if title is not None:
-            self._title = title
-        else:
-            title_element = self.get_subelement(self._channel, "title")
-            old_title = (
-                title_element.text
-                if title_element is not None and title_element.text is not None
-                else ""
+        new_title_list: list[str] = [
+            part_text
+            for part in (
+                "title_prefix",
+                "original_title",
+                "title_suffix",
             )
-            if prefix is not None:
-                self._title = "".join([prefix, old_title])
-            elif func is not None:
-                self._title = func(old_title)
+            if part in self._meta_channel
+            and (part_text := self._meta_channel[part].text) is not None
+        ]
+        self._channel["title"].text = " ".join(new_title_list)
+        return self._channel["title"]
 
-        return self._title
+    def set_entry_titles(
+        self, prefix: Optional[str] = None, suffix: Optional[str] = None
+    ):
+        """Set the entry titles."""
+        # Set the new prefix and suffix strings if given
+        if prefix:
+            self.entry_title_prefix = prefix
+        if suffix:
+            self.entry_title_suffix = suffix
+        for entry in self.feed_entries():
+            # TODO: This is unacceptably sloppy. Organize and make this readable.
+            # Consider refactoring somehow.
 
-    def serialize(
-        self,
-        meta_file_path: str | Path,
-    ) -> None:
-        """Serialize FeedModifier to json file."""
-        meta = {
-            "feed_format": str(type(self)),
-            "source_path": str(self.source_path),
-            "reruns_path": str(self.reruns_path),
-            "entry_title_prefix": self.entry_title_prefix,
-        }
+            # Initialize dict of the title parts that exist
+            part_keys = ("entry_title_prefix", "original_title", "entry_title_suffix")
+            title_parts: dict[str, str] = {
+                part: part_text
+                for part in part_keys
+                if part in self._meta_channel
+                and (part_text := self._meta_channel[part].text) is not None
+            }
 
-        with open(meta_file_path, "w") as f:
-            # f.write(json_contents)
-            json.dump(meta, f, ensure_ascii=False, indent=4)
+            # Apply the original date to the prefix and/or suffix if the original date
+            # is available
+            original_date = entry[self._meta_entry_tag]["original_pubdate"].text
+            if original_date is not None:
+                dt = parser.parse(original_date)
+                affixes = {"entry_title_prefix", "entry_title_suffix"}.intersection(
+                    title_parts
+                )
+                for affix in affixes:
+                    title_parts[affix] = dt.strftime(title_parts[affix])
+
+            title_list: list[str] = [title_parts[part] for part in part_keys]
+            entry["title"].text = " ".join(title_list)
         pass
 
-    @classmethod
-    def deserialize(cls, meta_file_path: str | Path) -> "FeedModifier":
-        """Deserialize from json to an RSSFeedModifier or AtomFeedModifier."""
-        with open(meta_file_path, "r") as f:
-            meta = json.load(f)
-            required_keys = {
-                "source_path",
-                "reruns_path",
-                "feed_format",
-                "entry_title_prefix",
+    def _entries_to_rerun(self) -> list[ElementWrapper]:
+        """Entries that have not yet been rebroadcast."""
+        not_reran = [
+            self.default_EWF(meta_entry.getparent())
+            for meta_entry in self._feed_meta_entries()
+            if meta_entry["reran"].text.lower() == "false"
+        ]
+
+        if len(not_reran) == 0 and self.run_forever:
+            self._mark_all_not_reran()
+            return self.feed_entries()
+        else:
+            return not_reran
+
+    def _feed_meta_entries(self) -> list[ElementWrapper]:
+        """Returns iterator over the meta subelements of the feed's entries."""
+        return [entry[self._meta_entry_tag] for entry in self.feed_entries()]
+
+    def _mark_all_not_reran(self) -> None:
+        """Mark all entries as not having been rebroadcast yet."""
+        for meta_entry in self._feed_meta_entries():
+            meta_entry["reran"].text = "False"
+        pass
+
+    def rebroadcast(
+        self, num: int = 1, use_datetime: Optional[datetime | str] = None
+    ) -> list[ElementWrapper]:
+        """Update the publication date for the given number of entries."""
+        if num < 0:
+            raise ValueError(f"Cannot select negative number of entries: {num}")
+
+        reran = []
+        remaining = num
+        while remaining > 0:
+            entries = self._entries_to_rerun()
+            if remaining >= len(entries):
+                for entry in entries:
+                    self._rebroadcast_entry(entry, use_datetime)
+                reran += entries
+                remaining -= len(entries)
+            else:
+                if self._meta_channel["order"].text.lower() == "chronological":
+                    entries.sort(key=self.get_entry_original_pubdate)
+                else:
+                    random.shuffle(entries)
+                for i in range(remaining):
+                    self._rebroadcast_entry(entries[i], use_datetime)
+                reran += entries[0:remaining]
+                remaining = 0
+        return reran
+
+    def _rebroadcast_entry(
+        self, entry: ElementWrapper, use_datetime: Optional[datetime | str] = None
+    ) -> None:
+        """AAAAAAAAAAAA."""
+        if use_datetime is None:
+            dt = datetime.now(timezone.utc)
+        else:
+            dt = (
+                use_datetime
+                if isinstance(use_datetime, datetime)
+                else parser.parse(use_datetime)
+            )
+        self.update_entry_pubdate(entry, dt)
+        entry[self._meta_entry_tag]["reran"].text = "True"
+
+    def write(
+        self,
+        path: str | Path,
+        with_reruns_data: bool = True,
+        use_datetime: Optional[datetime | str] = None,
+    ) -> None:
+        """Write modified feed (RSS or Atom) to XML file."""
+        # Update when the feed itself was last built before writing out
+        if use_datetime is None:
+            dt = datetime.now(timezone.utc)
+        else:
+            dt = (
+                use_datetime
+                if isinstance(use_datetime, datetime)
+                else parser.parse(use_datetime)
+            )
+        self.update_feed_builddate(dt)
+
+        if with_reruns_data:
+            self._tree.write(
+                path, pretty_print=True, xml_declaration=True, encoding="utf-8"
+            )
+        else:
+            stripped_tree = copy.deepcopy(self._tree)
+            stripped_root = stripped_tree.getroot()
+
+            # Remove `reruns` elements from the tree's copy
+            ET.strip_elements(
+                stripped_tree,
+                self._meta_entry_tag.split(":")[1],
+                self._meta_channel_tag.split(":")[1],
+            )
+
+            # Remove `reruns` namespace declaration
+            nsmap: dict[str, str] = {
+                k: v
+                for k, v in stripped_root.nsmap.items()
+                if k is not None and k != self._ns_prefix
             }
-            missing_keys = required_keys - meta.keys()
-            if missing_keys:
-                raise ValueError(
-                    "Meta file {meta_file_path} missing required keys: {missing_keys}"
-                )
-            return cls.from_file(**meta)
+            ET.cleanup_namespaces(
+                stripped_tree, top_nsmap=nsmap, keep_ns_prefixes=list(nsmap)
+            )
+            stripped_tree.write(
+                path, pretty_print=True, xml_declaration=True, encoding="utf-8"
+            )
+        pass
+
+    def get_entry_original_pubdate(self, entry: ElementWrapper) -> datetime:
+        """Get a given entry/item's original date of publication."""
+        original_date = entry[self._meta_entry_tag]["original_pubdate"].text
+        if original_date is None:
+            raise ValueError("Entry missing original_pubdate")
+        return parser.parse(original_date)
 
     @abstractmethod
-    def feed_channel(self) -> Element:
+    def feed_channel(self) -> ElementWrapper:
         """Returns the `feed` (Atom) or `channel` (RSS) element of the tree."""
         pass
 
     @abstractmethod
-    def feed_entries(self) -> Sequence[Element]:
+    def feed_entries(self) -> list[ElementWrapper]:
         """Returns iterator over the feed's entry/item elements."""
         pass
 
     @abstractmethod
-    def update_entry_pubdate(self, entry: Element, date: datetime) -> list[Element]:
+    def get_entry_pubdate(self, entry: ElementWrapper) -> Optional[str]:
+        """Get a given entry/item's date of publication."""
+        pass
+
+    @abstractmethod
+    def update_entry_pubdate(
+        self, entry: ElementWrapper, date: datetime
+    ) -> list[ElementWrapper]:
         """Update a given entry/item's date of publication."""
+        pass
+
+    @abstractmethod
+    def update_feed_builddate(self, date: datetime) -> list[ElementWrapper]:
+        """Update the feed's datetime of last publication."""
         pass
 
     @staticmethod
@@ -227,71 +452,56 @@ class FeedModifier(ABC):
         """Format a datetime as a string, in the format to be written to file."""
         pass
 
-    def set_subelement_text(
-        self, element: Element, subelement_name: str, text: str
-    ) -> Element:
-        """Update the text of a specified entry's subelement.
+    def _same_attributes(self, other):
+        """Pseudo-equality comparison, intended only for testing."""
 
-        If no subelement with the specified name is found, add the subelement before
-        setting its text.
+        def public_attrs(obj):
+            return {k: v for k, v in vars(obj).items() if not k.startswith("_")}
 
-        Args:
-            entry (Element):
-                Parent XML element whose subelement is to be updated.
-            subelement_name (str):
-                Name of the subelement to update.
-            text (str):
-                Text to be enclosed by the specified subelement.
-
-        Returns:
-            Element: the modified (possibly newly created) subelement.
-        """
-        subelement = self.get_subelement(element, subelement_name)
-        if subelement is None:
-            subelement = ET.SubElement(element, subelement_name)
-
-        subelement.text = text
-        return subelement
-
-    def get_subelement(self, element: Element, subelement_name: str) -> Element | None:
-        """Get a specified element's subelement.
-
-        The only reason this one-line method exists is to avoid the visual noise of
-        repeatedly providing `self._nsmap` as an argument to Element's `find`.
-        Otherwise, `find` would be used directly each time, instead of calling this.
-
-        Args:
-            entry (Element):
-                Parent XML element whose subelement is to be found.
-            subelement_name (str):
-                Name of the subelement to find.
-
-        Returns:
-            Optional[Element]: the found subelement, or None if not found.
-        """
-        return element.find(subelement_name, self._nsmap)
+        # TODO: This is a temporary kludge that only exists for sanity checking. It does
+        # not properly show equality, which is why it is not `__eq__`.
+        # Remove this once better test cases for [de]serialization are in place.
+        return public_attrs(self) == public_attrs(other)
 
 
 class RSSFeedModifier(FeedModifier):
     """Modify a given RSS feed."""
 
-    def feed_channel(self) -> Element:
+    def feed_channel(self) -> ElementWrapper:
         """Returns the `feed` (Atom) or `channel` (RSS) element of the tree."""
         # For RSS, the `channel` element is a child of the root `rss` element
-        channel = self._root.find("channel", self._nsmap)
+        channel = self.default_EWF(self._root)["channel"]
         if channel is None:
             raise ValueError("RSS feed must contain `channel` element (not found).")
         else:
             return channel
 
-    def feed_entries(self) -> Sequence[Element]:
+    def feed_entries(self) -> list[ElementWrapper]:
         """Returns iterator over the feed's item elements."""
-        return self._channel.findall("item", self._nsmap)
+        return self._channel.iterfind("item")
 
-    def update_entry_pubdate(self, entry: Element, date: datetime) -> list[Element]:
+    def get_entry_pubdate(self, entry: ElementWrapper) -> Optional[str]:
+        """Get a given entry/item's date of publication."""
+        pubdate = entry["pubDate"]
+        if pubdate is not None:
+            return pubdate.text
+        raise ValueError(f"RSS entry has no 'pubdate': {entry._element}")
+
+    def update_entry_pubdate(
+        self, entry: ElementWrapper, date: datetime
+    ) -> list[ElementWrapper]:
         """Update a given entry/item's date of publication."""
         formatted_date: str = self.format_datetime(date)
-        return [self.set_subelement_text(entry, "pubDate", formatted_date)]
+        entry["pubDate"].text = formatted_date
+        return [entry["pubDate"]]
+
+    def update_feed_builddate(self, date: datetime) -> list[ElementWrapper]:
+        """Update the feed's datetime of last publication."""
+        # For RSS, this updates the channel's `lastBuildDate` and `pubDate`
+        formatted_date: str = self.format_datetime(date)
+        self._channel["pubDate"].text = formatted_date
+        self._channel["lastBuildDate"].text = formatted_date
+        return [self._channel["pubDate"], self._channel["lastBuildDate"]]
 
     @staticmethod
     def format_datetime(date: datetime) -> str:
@@ -317,27 +527,46 @@ class RSSFeedModifier(FeedModifier):
         Returns:
             str: correctly-formatted string representing the datetime.
         """
-        return format_datetime(date)
+        return email.utils.format_datetime(date)
 
 
 class AtomFeedModifier(FeedModifier):
     """Modify a given Atom feed."""
 
-    def feed_channel(self) -> Element:
+    def feed_channel(self) -> ElementWrapper:
         """Returns the `feed` (Atom) or `channel` (RSS) element of the tree."""
         # For Atom, the `feed` element is the root itself
-        return self._root
+        return self.default_EWF(self._root)
 
-    def feed_entries(self) -> Sequence[Element]:
+    def feed_entries(self) -> list[ElementWrapper]:
         """Returns iterator over the feed's entry elements."""
-        return self._channel.findall("entry", self._nsmap)
+        return self.default_EWF(self._root).iterfind("entry")
 
-    def update_entry_pubdate(self, entry: Element, date: datetime) -> list[Element]:
+    def get_entry_pubdate(self, entry: ElementWrapper) -> Optional[str]:
+        """Get a given entry/item's date of publication."""
+        if "updated" in entry:
+            return entry["updated"].text
+        elif "published" in entry:
+            return entry["published"].text
+        raise ValueError(
+            f"Atom entry has no 'updated' nor 'published': {entry._element}"
+        )
+
+    def update_entry_pubdate(
+        self, entry: ElementWrapper, date: datetime
+    ) -> list[ElementWrapper]:
         """Update a given entry/item's date of publication."""
         formatted_date: str = self.format_datetime(date)
-        published = self.set_subelement_text(entry, "published", formatted_date)
-        updated = self.set_subelement_text(entry, "updated", formatted_date)
-        return [published, updated]
+        entry["published"].text = formatted_date
+        entry["updated"].text = formatted_date
+        return [entry["published"], entry["updated"]]
+
+    def update_feed_builddate(self, date: datetime) -> list[ElementWrapper]:
+        """Update the feed's datetime of last publication."""
+        # For Atom, this updates the channel's `updated` element
+        formatted_date: str = self.format_datetime(date)
+        self._channel["updated"] = formatted_date
+        return [self._channel["updated"]]
 
     @staticmethod
     def format_datetime(date: datetime) -> str:

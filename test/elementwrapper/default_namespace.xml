@@ -1,0 +1,17 @@
+<?xml version="1.1"?>
+<!-- initially, the default namespace is "books" -->
+<book xmlns='urn:loc.gov:books'
+      xmlns:isbn='urn:ISBN:0-395-36341-6'>
+    <title>Cheaper by the Dozen</title>
+    <isbn:number>1568491379</isbn:number>
+    <notes>
+      <!-- make HTML the default namespace for some commentary -->
+      <p xmlns='http://www.w3.org/1999/xhtml'>Book is <i>funny!</i></p>
+      <p xmlns:images="https://images.example.org">
+        <images:img src="scan.gif" alt="The book has pictures!"/>
+        <div>I'm still in the `urn:loc.gov:books` default namespace</div>
+      </p>
+    </notes>
+<!-- example adapted from W3C: Namespaces in XML 1.1 (Second Edition)-->
+<!-- https://www.w3.org/TR/2006/REC-xml-names11-20060816/#defaulting -->
+</book>
