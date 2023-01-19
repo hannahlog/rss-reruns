@@ -28,6 +28,17 @@ clark_notation = re.compile(r"\{\S*\}\S*")
 # extract "namespace", "localname" as groups 1 and 2
 clark_notation_groups = re.compile(r"\{(\S*)\}(\S*)")
 
+# Sentinel indicating "use the ElementWrapper's prefix attribute"
+_USE_WRAPPER_NAMESPACE = object()
+# Alias for an empty string, which for ElementWrapper is the 'prefix' of a
+# default namespace
+_USE_DEFAULT_NAMESPACE = ""
+# (lxml represents the prefix of a default namespace as None, but for the wrapper's
+# purposes, being given a None prefix in a (None, "localname") tuple corresponds to
+# No Namespace, while simply not being given a namespace ("localname") indicates
+# "use the wrapper's namespace"
+_USE_NO_NAMESPACE = None
+
 
 def try_unpack(func):
     """Replace the original method's first argument with a different representation.
@@ -45,6 +56,11 @@ def try_unpack(func):
         Single string with no namespace specified. The ElementWrapper's preferred
         namespace will be used with the given localname to create a qualified name
         (QName) corresponding to a subelement with that localname in that namespace.
+
+    (None, "localname")
+        A prefix of None indicates that no namespace should be used. This may have been
+        passed explicitly because the ElementWrapper's prefix attribute specifies a
+        namespace.
 
     ("prefix", "localname")
         Tuple of prefix and localname. These are unpacked and used to create a
@@ -84,7 +100,8 @@ def try_unpack(func):
         # So, unfortunately, the more Pythonic Way has different behavior which is
         # undesirable here. :(
         if isinstance(subelement_name, tuple):
-            # Unpack the name if it is a (prefix, localname) or (uri, localname) pair
+            # Unpack the name if it is a (prefix, localname), (uri, localname), or
+            # (None, localname) pair
             prefix_or_uri, name = subelement_name
             name = self._QName(name, prefix_or_uri)
         elif clark_notation.fullmatch(name):
@@ -100,7 +117,7 @@ def try_unpack(func):
         else:
             # Otherwise, with no prefix specified, the ElementWrapper's own prefix
             # attribute will be used
-            name = self._QName(name)
+            name = self._QName(name, _USE_WRAPPER_NAMESPACE)
 
         return func(self, name, *args, **kwargs)
 
@@ -113,19 +130,20 @@ class ElementWrapper:
     def __init__(self, element: Element, with_prefix):
         """Initialization."""
         self.__dict__["_element"] = element
-        self.__dict__["_with_prefix"] = with_prefix
-
-    def _prefix(self, element):
-        if element.prefix is None and element.prefix in element.nsmap:
-            return ""
+        if with_prefix is None and None in element.nsmap:
+            # If None is in the element's nsmap, the None indicates a default namespace
+            self.__dict__["_with_prefix"] = _USE_DEFAULT_NAMESPACE
+        elif with_prefix is None and None not in element.nsmap:
+            # Otherwise, None indicates using no namespace
+            self.__dict__["_with_prefix"] = _USE_NO_NAMESPACE
         else:
-            return element.prefix
+            self.__dict__["_with_prefix"] = with_prefix
 
     @try_unpack
     def __getitem__(self, subelement_name: str | ET.QName) -> "ElementWrapper":
         """Index into a given subelement."""
         found = self._get_or_create_subelement(self._element, subelement_name)
-        return ElementWrapper(found, self._prefix(found))
+        return ElementWrapper(found, found.prefix)
 
     @try_unpack
     def __setitem__(self, subelement_name, value):
@@ -145,7 +163,7 @@ class ElementWrapper:
     def iterfind(self, subelement_name: str | ET.QName) -> list["ElementWrapper"]:
         """Find subelements matching a given name."""
         results = self._element.iterfind(subelement_name)
-        return [ElementWrapper(found, self._prefix(found)) for found in results]
+        return [ElementWrapper(found, found.prefix) for found in results]
 
     @try_unpack
     def __contains__(self, subelement_name) -> bool:
@@ -270,19 +288,19 @@ class ElementWrapper:
             # Create missing subelement
             return ET.SubElement(element, subelement_name)
 
-    def _QName(self, name: str, prefix_or_uri=None) -> ET.QName | str:
+    def _QName(self, name: str, prefix_or_uri=_USE_WRAPPER_NAMESPACE) -> ET.QName | str:
         """Creates qualified name of a given tag in the `reruns` namespace."""
-        if prefix_or_uri is None and self._with_prefix is None:
-            # No prefix is given and the preferred setting is to use no namespace at all
-            return name
-        if prefix_or_uri is None:
-            # No prefix is given but the preferred setting is an actual namespace
+        if prefix_or_uri is _USE_WRAPPER_NAMESPACE:
+            # Use the wrapper's namespace setting, possibly No Namespace
             prefix_or_uri = self._with_prefix
+        if prefix_or_uri is _USE_NO_NAMESPACE:
+            # Return the unqualified name
+            return name
         if prefix_or_uri in self._nsmap():
-            # When given a namespace prefix
+            # Convert the prefix to a URI before using
             return ET.QName(self._nsmap()[prefix_or_uri], name)
         elif prefix_or_uri in self._nsmap().values():
-            # When given a namespace URI
+            # Given a namespace URI
             return ET.QName(prefix_or_uri, name)
         else:
             raise ValueError(
@@ -310,7 +328,7 @@ class ElementWrapper:
 
     def _clean_nsmap(self, nsmap: dict[Optional[str], str]) -> dict[str, str]:
         """Replace a `None` key an with empty string if encountered."""
-        return {(k or ""): v for k, v in nsmap.items()}
+        return {(k or _USE_DEFAULT_NAMESPACE): v for k, v in nsmap.items()}
 
 
 class ElementWrapperFactory:

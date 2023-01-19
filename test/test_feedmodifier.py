@@ -1,5 +1,6 @@
 """FeedModifier test cases (with PyTest)."""
 
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from time import sleep
@@ -13,7 +14,7 @@ from feedmodifier import AtomFeedModifier, FeedModifier, RSSFeedModifier
 
 tmp_dir = Path("test/tmp/")
 tmp_dir.mkdir(exist_ok=True)
-data_dir = Path("test/data/")
+data_dir = Path("test/feedmodifier/")
 
 
 def as_RSS(filename: str, **kwargs) -> RSSFeedModifier:
@@ -29,7 +30,13 @@ def as_Atom(filename: str, **kwargs) -> AtomFeedModifier:
 @pytest.fixture
 def simple_rss_fnames():
     """List of paths for simple RSS feeds."""
-    return ("no_items.rss", "one_item.rss", "two_items.rss")
+    return (
+        "no_items.rss",
+        "one_item.rss",
+        "two_items.rss",
+        "four_items.rss",
+        "seven_items.rss",
+    )
 
 
 @pytest.fixture
@@ -158,17 +165,64 @@ def test_write(simple_fnames, simple_fms):
         fm.write(out_path)
         # TODO: actually write these tests, expected output files, etc.
         deserialized = fm.from_file(out_path)
-        # assert fm._same_attributes(deserialized)
+        assert _same_attributes(fm, deserialized)
         pass
+
+
+def _same_attributes(this, other):
+    """Pseudo-equality comparison, intended only for testing."""
+    # TODO: This is a temporary kludge that only exists for sanity checking. It does
+    # not properly show equality, which is why it is not an `__eq__` method.
+    # Remove this once better test cases for [de]serialization are in place.
+    def _attrs(obj):
+        attrs = {
+            k: v
+            for k, v in vars(obj).items()
+            if (k in {"_nsmap"} or not k.startswith("_")) and k not in {"path"}
+        }
+        from_meta_channel = {
+            subelement: obj._meta_channel[subelement].text
+            for subelement in (
+                "original_title",
+                "title_prefix",
+                "entry_title_prefix",
+                "entry_title_suffix",
+                "run_forever",
+                "order",
+            )
+        }
+        from_channel = {"title": obj._channel["title"].text}
+        return attrs | from_meta_channel | from_channel
+
+    this_attrs = _attrs(this)
+    other_attrs = _attrs(other)
+
+    this_nsmap = (
+        {(k, v) for k, v in this_attrs["_nsmap"].items()}
+        if "_nsmap" in this_attrs
+        else set()
+    )
+    other_nsmap = (
+        {(k, v) for k, v in other_attrs["_nsmap"].items()}
+        if "_nsmap" in other_attrs
+        else set()
+    )
+    nsmaps_diff = this_nsmap ^ other_nsmap
+
+    this_everything_else = {(k, v) for k, v in this_attrs.items() if k != "_nsmap"}
+    other_everything_else = {(k, v) for k, v in other_attrs.items() if k != "_nsmap"}
+
+    diff = this_everything_else ^ other_everything_else
+    return len(nsmaps_diff | diff) == 0
 
 
 def test_same_attributes(simple_fms):
     """Test the `_same_attributes` method (used in testing [de]serialization)."""
     other_fm = as_Atom("two_items.atom")
-    other_fm.entry_title_prefix = "56546576576576576"
+    other_fm["entry_title_prefix"] = "VERY DIFFERENT PREFIX!"
     for fm in simple_fms:
-        assert fm._same_attributes(fm)
-        assert not fm._same_attributes(other_fm)
+        assert _same_attributes(fm, fm)
+        assert not _same_attributes(fm, other_fm)
 
 
 def rss_len_examples() -> tuple[RSSFeedModifier, int]:
@@ -177,6 +231,8 @@ def rss_len_examples() -> tuple[RSSFeedModifier, int]:
         (as_RSS("no_items.rss"), 0),
         (as_RSS("one_item.rss"), 1),
         (as_RSS("two_items.rss"), 2),
+        (as_RSS("four_items.rss"), 4),
+        (as_RSS("seven_items.rss"), 7),
     ]
 
 
@@ -186,6 +242,7 @@ def atom_len_examples() -> tuple[AtomFeedModifier, int]:
         (as_Atom("no_items.atom"), 0),
         (as_Atom("one_item.atom"), 1),
         (as_Atom("two_items.atom"), 2),
+        (as_Atom("namespaced_two_items.atom"), 2),
     ]
 
 
@@ -193,32 +250,94 @@ def atom_len_examples() -> tuple[AtomFeedModifier, int]:
     "fm, expected_len", (*rss_len_examples(), *atom_len_examples())
 )
 def test_feed_entries_len(fm, expected_len):
-    """Test feed_entries() for RSSFeedModifiers."""
+    """Test feed_entries() for FeedModifiers."""
     assert len(fm.feed_entries()) == expected_len
 
 
-def test_set_subelement_text(simple_fms):
-    """Test `set_subelement_text` for FeedModifiers."""
-    for fm in simple_fms:
-        num_entries = len(fm.feed_entries())
-        contents = []
-        for index, entry in enumerate(fm.feed_entries()):
-            # print(ET.tostring(entry["content"]._element))
-            # print(ET.tostring(entry["content"].text))
-            new_content = f"The content is {index}"
-            entry["content"].text = new_content
-            print(ET.tostring(entry["content"]._element))
-            # content_element = fm.lu.set_subelement_text(entry, "content", new_content)
-            contents.append((entry["content"], new_content))
+@pytest.mark.parametrize(
+    "fm, expected_len", (*rss_len_examples(), *atom_len_examples())
+)
+def test_feed_meta_entries_len(fm, expected_len):
+    """Test _feed_meta_entries() for FeedModifiers."""
+    assert len(fm._feed_meta_entries()) == expected_len
 
-        # The number of entries should remain the same
-        assert len(fm.feed_entries()) == num_entries
 
-        # Check that the element texts have been updated correctly, and that updating
-        # one entry's subelement did not affect a different entry's subelement.
-        for entry, content in contents:
-            assert entry.text == content
-            assert entry._element.text == content
+@pytest.mark.parametrize(
+    "fm, expected_len", (*rss_len_examples(), *atom_len_examples())
+)
+def test_entries_to_rerun(fm, expected_len):
+    """_entries_to_rerun() should initially return all entries."""
+    assert len(fm._entries_to_rerun()) == expected_len
+
+
+@pytest.mark.parametrize(
+    "fm, expected_len",
+    (
+        (fm, length)
+        for (fm, length) in (*rss_len_examples(), *atom_len_examples())
+        if length > 0
+    ),
+)
+def test_entries_to_rerun_single_rebroadcasts(fm, expected_len):
+    """_entries_to_rerun() decreases by one each time rebroadcast(1) is called."""
+    assert len(fm._entries_to_rerun()) == expected_len
+
+    # (Go through and rebroadcast all of the entries a few times over.)
+    for i in range(7):
+        # Rebroadcast entries until there is only 1 that has not been rebroadcasted
+        while (remaining := len(fm._entries_to_rerun())) > 1:
+            fm.rebroadcast(1)
+            assert len(fm._entries_to_rerun()) == remaining - 1
+
+        # Rebroadcast the last remaining entry that has not yet been rebroadcast.
+        fm.rebroadcast(1)
+        # 0 should not be returned: when rebroadcast(1) would rebroacast the last
+        # remaining entry, all entries should be marked as <reran>False</reran>, so
+        # the number of remaining entries will again be the total number of entries.
+        assert len(fm._entries_to_rerun()) == expected_len
+
+
+@pytest.mark.parametrize(
+    "fm, expected_len, num",
+    (
+        (fm, length, num)
+        for (fm, length) in (*rss_len_examples(), *atom_len_examples())
+        for num in range(1, length)
+        if length > 0
+    ),
+)
+def test_entries_to_rerun_multiple_rebroadcasts(fm, expected_len, num):
+    """Decrease remaining by num (mod len) after calling rebroadcast(num)."""
+    assert len(fm._entries_to_rerun()) == expected_len
+
+    lcm = math.lcm(expected_len, num)
+    calls_to_reach_exactly_zero = lcm // num
+    # print(f"Expected_len: {expected_len}, num: {num}")
+    # print(f"LCM: {lcm}")
+    # print(f"(lcm // num): {(lcm // num)}")
+    # print(f"(lcm // num) - 1: {(lcm // num) - 1}")
+
+    # (Go through and rebroadcast all of the entries a few times over.)
+    for i in range(7):
+        remaining = expected_len
+        # print(f"{remaining} (mod {expected_len})")
+        for calls_to_rebroadcast in range(calls_to_reach_exactly_zero - 1):
+            fm.rebroadcast(num)
+            now_remaining = (remaining - num) % expected_len
+            assert len(fm._entries_to_rerun()) % expected_len == now_remaining
+            remaining = now_remaining
+            # print(f"{remaining} (mod {expected_len})")
+
+        # After (lcm // num) - 1 rebroadcasts of num entries, there should be exactly
+        # `num` entries left to rebroadcast
+        assert remaining == num
+
+        # Rebroadcast the last `num` remaining entries
+        fm.rebroadcast(num)
+        # 0 should not be returned: when rebroadcast(num) would rebroacast the last
+        # remaining entries, all entries should be marked as <reran>False</reran>, so
+        # the number of remaining entries will again be the total number of entries.
+        assert len(fm._entries_to_rerun()) == expected_len
 
 
 def test_update_entry_pubdate(simple_fms):
@@ -251,7 +370,6 @@ def test_update_entry_pubdate(simple_fms):
 
             # Check that the datetimes were set as expected
             for el in elements:
-                print(el)
                 assert el.text == fm.format_datetime(dt)
 
 

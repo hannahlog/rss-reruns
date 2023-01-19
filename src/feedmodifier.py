@@ -62,12 +62,12 @@ class FeedModifier(ABC):
         self.add_namespace(prefix=self._ns_prefix, uri=self._ns_uri)
         self._nsmap = self._clean_nsmap(root.nsmap)
 
-        self.default_EWF = ElementWrapperFactory("" if "" in self._nsmap else None)
-        self.reruns_EWF = ElementWrapperFactory(self._ns_prefix)
+        self._default_EWF = ElementWrapperFactory("" if "" in self._nsmap else None)
+        self._reruns_EWF = ElementWrapperFactory(self._ns_prefix)
 
         # Element containing metadata and entry/item elements:
         # `feed` for Atom (which is also the root), `channel` for RSS (not the root)
-        self._root: ElementWrapper = self.default_EWF(root)
+        self._root: ElementWrapper = self._default_EWF(root)
         self._channel: ElementWrapper = self.feed_channel()
 
         self._meta_channel: ElementWrapper = self._channel[self._meta_channel_tag]
@@ -192,13 +192,13 @@ class FeedModifier(ABC):
     @property
     def run_forever(self):
         """Getter function for retrieving `forever` text from the etree."""
-        return self._meta_channel["forever"].text.lower() == "true"
+        return self._meta_channel["run_forever"].text.lower() == "true"
 
     @run_forever.setter
     def run_forever(self, forever: bool | str):
         """Setter function for setting `forever` text in the etree."""
         if str(forever).capitalize() in {"True", "False"}:
-            self._meta_channel["forever"].text = str(forever).capitalize()
+            self._meta_channel["run_orever"].text = str(forever).capitalize()
         else:
             raise ValueError(
                 f"Invalid value {forever} for `forever`: expected True or False."
@@ -302,7 +302,7 @@ class FeedModifier(ABC):
     def _entries_to_rerun(self) -> list[ElementWrapper]:
         """Entries that have not yet been rebroadcast."""
         not_reran = [
-            self.default_EWF(meta_entry.getparent())
+            self._default_EWF(meta_entry.getparent())
             for meta_entry in self._feed_meta_entries()
             if meta_entry["reran"].text.lower() == "false"
         ]
@@ -452,17 +452,6 @@ class FeedModifier(ABC):
         """Format a datetime as a string, in the format to be written to file."""
         pass
 
-    def _same_attributes(self, other):
-        """Pseudo-equality comparison, intended only for testing."""
-
-        def public_attrs(obj):
-            return {k: v for k, v in vars(obj).items() if not k.startswith("_")}
-
-        # TODO: This is a temporary kludge that only exists for sanity checking. It does
-        # not properly show equality, which is why it is not `__eq__`.
-        # Remove this once better test cases for [de]serialization are in place.
-        return public_attrs(self) == public_attrs(other)
-
 
 class RSSFeedModifier(FeedModifier):
     """Modify a given RSS feed."""
@@ -470,7 +459,7 @@ class RSSFeedModifier(FeedModifier):
     def feed_channel(self) -> ElementWrapper:
         """Returns the `feed` (Atom) or `channel` (RSS) element of the tree."""
         # For RSS, the `channel` element is a child of the root `rss` element
-        channel = self.default_EWF(self._root)["channel"]
+        channel = self._default_EWF(self._root)["channel"]
         if channel is None:
             raise ValueError("RSS feed must contain `channel` element (not found).")
         else:
@@ -536,11 +525,11 @@ class AtomFeedModifier(FeedModifier):
     def feed_channel(self) -> ElementWrapper:
         """Returns the `feed` (Atom) or `channel` (RSS) element of the tree."""
         # For Atom, the `feed` element is the root itself
-        return self.default_EWF(self._root)
+        return self._default_EWF(self._root)
 
     def feed_entries(self) -> list[ElementWrapper]:
         """Returns iterator over the feed's entry elements."""
-        return self.default_EWF(self._root).iterfind("entry")
+        return self._default_EWF(self._root).iterfind("entry")
 
     def get_entry_pubdate(self, entry: ElementWrapper) -> Optional[str]:
         """Get a given entry/item's date of publication."""
