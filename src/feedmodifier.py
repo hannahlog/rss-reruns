@@ -63,15 +63,37 @@ class FeedModifier(ABC):
         self._nsmap = self._clean_nsmap(root.nsmap)
 
         self._default_EWF = ElementWrapperFactory("" if "" in self._nsmap else None)
-        self._reruns_EWF = ElementWrapperFactory(self._ns_prefix)
+        self._root: ElementWrapper = self._default_EWF(root)
 
         # Element containing metadata and entry/item elements:
         # `feed` for Atom (which is also the root), `channel` for RSS (not the root)
-        self._root: ElementWrapper = self._default_EWF(root)
         self._channel: ElementWrapper = self.feed_channel()
 
+        # Subelement of the channel containing data and settings for the FeedModifier
         self._meta_channel: ElementWrapper = self._channel[self._meta_channel_tag]
-        self._create_missing_elements()
+
+        # Default meta channel values:
+        meta_channel_defaults = {
+            "order": "chronological",
+            "rate": "1",
+            "run_forever": "True",
+            "original_title": self._channel["title"].text or "",
+            "title_prefix": "[Reruns:]",
+            "title_suffix": None,
+            "entry_title_prefix": "[Rerun:]",
+            "entry_title_suffix": "(Originally published: %b %d %Y)",
+        }
+        self._create_defaults_if_missing(self._meta_channel, meta_channel_defaults)
+
+        # Default meta entry values:
+        for entry in self.feed_entries():
+            entry_meta = entry[self._meta_entry_tag]
+            meta_entry_defaults = {
+                "original_pubdate": self.get_entry_pubdate(entry),
+                "original_title": entry["title"].text or "",
+                "reran": "False",
+            }
+            self._create_defaults_if_missing(entry_meta, meta_entry_defaults)
 
         if run_forever is not None:
             self.run_forever = run_forever
@@ -97,32 +119,22 @@ class FeedModifier(ABC):
         )
         pass
 
-    def _create_missing_elements(self):
-        """Fill missing elements in the `reruns` namespace with default values."""
-        meta_channel_defaults = {
-            "order": "chronological",
-            "rate": "1",
-            "run_forever": "True",
-            "original_title": self._channel["title"].text or "",
-            "title_prefix": "[Reruns:]",
-            "entry_title_prefix": "[Rerun:]",
-            "entry_title_suffix": "(Originally published: %b %d %Y)",
-        }
-        for tag, text in meta_channel_defaults.items():
-            # Defaults do not override already-existing elements or their texts
-            self._meta_channel[tag].text = self._meta_channel[tag].text or text
-
-        for entry in self.feed_entries():
-            entry_meta = entry[self._meta_entry_tag]
-            meta_entry_defaults = {
-                "original_pubdate": self.get_entry_pubdate(entry),
-                "original_title": entry["title"].text or "",
-                "reran": "False",
-            }
-            for tag, text in meta_entry_defaults.items():
-                # Defaults do not override already-existing elements or their texts
-                entry_meta[tag].text = entry_meta[tag].text or text
-        pass
+    def _create_defaults_if_missing(
+        self, parent: ElementWrapper, defaults: dict[str, Optional[str]]
+    ) -> None:
+        """Create subelements with given text only if the subelement does not exist."""
+        for tag, text in defaults.items():
+            # Defaults do not override already-existing elements or their texts.
+            # Specifically, if the subelement already exists with no text (<tag/>),
+            # then this will preserve the subelement having no text.
+            # E.g. a modified feed that previously had entry_title_prefix set
+            # to None will remain that way:
+            #   `<reruns:entry_title_prefix/>`
+            # Preseving such None-text is why it is written this way, and not
+            #   `parent[tag].text = parent[tag].text or text`
+            # which would overwrite "" as well as None.
+            if tag not in parent:
+                parent[tag].text = text
 
     @classmethod
     def from_url(
@@ -198,7 +210,7 @@ class FeedModifier(ABC):
     def run_forever(self, forever: bool | str):
         """Setter function for setting `forever` text in the etree."""
         if str(forever).capitalize() in {"True", "False"}:
-            self._meta_channel["run_orever"].text = str(forever).capitalize()
+            self._meta_channel["run_forever"].text = str(forever).capitalize()
         else:
             raise ValueError(
                 f"Invalid value {forever} for `forever`: expected True or False."
@@ -245,9 +257,9 @@ class FeedModifier(ABC):
         """
         # Set the new prefix and suffix strings if given
         if prefix:
-            self.title_prefix = prefix
+            self["title_prefix"] = prefix
         if suffix:
-            self.title_suffix = suffix
+            self["title_suffix"] = suffix
 
         new_title_list: list[str] = [
             part_text
@@ -268,25 +280,26 @@ class FeedModifier(ABC):
         """Set the entry titles."""
         # Set the new prefix and suffix strings if given
         if prefix:
-            self.entry_title_prefix = prefix
+            self["entry_title_prefix"] = prefix
         if suffix:
-            self.entry_title_suffix = suffix
+            self["entry_title_suffix"] = suffix
         for entry in self.feed_entries():
             # TODO: This is unacceptably sloppy. Organize and make this readable.
             # Consider refactoring somehow.
+            meta_entry = entry[self._meta_entry_tag]
 
             # Initialize dict of the title parts that exist
             part_keys = ("entry_title_prefix", "original_title", "entry_title_suffix")
+            part_parents = (self._meta_channel, meta_entry, self._meta_channel)
             title_parts: dict[str, str] = {
                 part: part_text
-                for part in part_keys
-                if part in self._meta_channel
-                and (part_text := self._meta_channel[part].text) is not None
+                for part, parent in zip(part_keys, part_parents)
+                if part in parent and (part_text := parent[part].text) is not None
             }
 
             # Apply the original date to the prefix and/or suffix if the original date
             # is available
-            original_date = entry[self._meta_entry_tag]["original_pubdate"].text
+            original_date = meta_entry["original_pubdate"].text
             if original_date is not None:
                 dt = parser.parse(original_date)
                 affixes = {"entry_title_prefix", "entry_title_suffix"}.intersection(
