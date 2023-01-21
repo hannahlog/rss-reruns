@@ -9,6 +9,9 @@ __pycache__/
 # Ignore local/editable install
 *.egg-info/
 
+# Ignore wheels and source archive
+/dist/
+
 # Ignore Sublime project/workspace
 *.sublime-project
 *.sublime-workspace
