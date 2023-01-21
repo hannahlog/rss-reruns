@@ -2,10 +2,12 @@
 env/
 
 # Ignore pycache
-src/__pycache__/
-test/__pycache__/
+__pycache__/
 .pytest_cache/
 .mypy_cache/
+
+# Ignore local/editable install
+*.egg-info/
 
 # Ignore Sublime project/workspace
 *.sublime-project

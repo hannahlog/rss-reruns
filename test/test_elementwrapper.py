@@ -4,7 +4,7 @@ from pathlib import Path
 
 from lxml import etree as ET
 
-from elementwrapper import ElementWrapper, ElementWrapperFactory
+from rssreruns.elementwrapper import ElementWrapper, ElementWrapperFactory
 
 tmp_dir = Path("test/tmp/")
 tmp_dir.mkdir(exist_ok=True)

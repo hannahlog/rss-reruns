@@ -12,7 +12,7 @@ import requests
 from dateutil import parser
 from lxml import etree as ET
 
-from elementwrapper import ElementWrapper, ElementWrapperFactory
+from .elementwrapper import ElementWrapper, ElementWrapperFactory
 
 # Underscores present because those are the class names in lxml.etree
 Element = ET._Element

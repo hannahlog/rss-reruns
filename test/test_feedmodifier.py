@@ -10,7 +10,7 @@ import requests
 from dateutil import parser
 from lxml import etree as ET
 
-from feedmodifier import AtomFeedModifier, FeedModifier, RSSFeedModifier
+from rssreruns.feedmodifier import AtomFeedModifier, FeedModifier, RSSFeedModifier
 
 tmp_dir = Path("test/tmp/")
 tmp_dir.mkdir(exist_ok=True)

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rssreruns"
+version = "0.0.1"
+authors = [
+  { name="Hannah Connolly", email="hannah.d.connolly@gmail.com" },
+]
+description = "Rebroadcast old RSS/Atom feed items to a new feed, in shuffled or chronological order"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {file = "LICENSE.txt"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dynamic = ["dependencies", "optional-dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+optional-dependencies = {dev = {file = ["requirements-dev.txt"]}}
+
+[project.urls]
+"Homepage" = "https://github.com/hannahlog/rss-reruns"
+"Bug Tracker" = "https://github.com/hannahlog/rss-reruns/issues"
