@@ -1,0 +1,10 @@
+-r requirements.txt
+lxml-stubs==0.4.0
+mypy-extensions==0.4.3
+mypy==0.991
+pre-commit==2.21.0
+pytest==7.2.1
+types-python-dateutil==2.8.19.6
+types-requests==2.28.11.8
+types-urllib3==1.26.25.4
+typing_extensions==4.4.0
