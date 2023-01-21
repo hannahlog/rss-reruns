@@ -8,7 +8,7 @@ version = "0.0.1"
 authors = [
   { name="Hannah Connolly", email="hannah.d.connolly@gmail.com" },
 ]
-description = "Rebroadcast old RSS/Atom feed items to a new feed, in shuffled or chronological order"
+description = "Rebroadcast old RSS/Atom feed items to a new feed, in shuffled or chronological order."
 readme = "README.md"
 requires-python = ">=3.7"
 license = {file = "LICENSE.txt"}
