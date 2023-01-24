@@ -11,6 +11,7 @@ attribute?", and then it turned out that lxml already had that, but I wanted to 
 own implementation anyway. Mostly so I had a chance to write more dunder methods than I
 usually have reason to, haha.)
 """
+from __future__ import annotations
 
 import functools
 import re

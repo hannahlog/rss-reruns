@@ -1,4 +1,5 @@
 """ElementWrapper test cases (with PyTest)."""
+from __future__ import annotations
 
 from pathlib import Path
 

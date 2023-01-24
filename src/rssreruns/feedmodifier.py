@@ -1,4 +1,5 @@
 """Modify a given XML-based feed (RSS or Atom)."""
+from __future__ import annotations
 
 import copy
 import email.utils
@@ -262,14 +263,13 @@ class FeedModifier(ABC):
             self["title_suffix"] = suffix
 
         new_title_list: list[str] = [
-            part_text
+            self._meta_channel[part].text
             for part in (
                 "title_prefix",
                 "original_title",
                 "title_suffix",
             )
-            if part in self._meta_channel
-            and (part_text := self._meta_channel[part].text) is not None
+            if part in self._meta_channel and self._meta_channel[part].text is not None
         ]
         self._channel["title"].text = " ".join(new_title_list)
         return self._channel["title"]
@@ -292,9 +292,9 @@ class FeedModifier(ABC):
             part_keys = ("entry_title_prefix", "original_title", "entry_title_suffix")
             part_parents = (self._meta_channel, meta_entry, self._meta_channel)
             title_parts: dict[str, str] = {
-                part: part_text
+                part: parent[part].text
                 for part, parent in zip(part_keys, part_parents)
-                if part in parent and (part_text := parent[part].text) is not None
+                if part in parent and parent[part].text is not None
             }
 
             # Apply the original date to the prefix and/or suffix if the original date

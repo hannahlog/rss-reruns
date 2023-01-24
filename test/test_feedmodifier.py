@@ -1,7 +1,8 @@
 """FeedModifier test cases (with PyTest)."""
+from __future__ import annotations
 
-import math
 from datetime import datetime, timezone
+from math import gcd
 from pathlib import Path
 from time import sleep
 
@@ -99,17 +100,21 @@ def test_from_file(simple_fnames):
         assert fm._channel is not None
 
 
+rss_url = "http://www.rss-specifications.com/blog-feed.xml"
+tmp_path = tmp_dir / "my_filename.rss"
+
+
 # TODO: better way to organize/write this? :(
 @pytest.mark.parametrize(
     "args, expected_path",
     [
         # No path specified: expect default
         (
-            (rss_url := "http://www.rss-specifications.com/blog-feed.xml", None),
+            (rss_url, None),
             "downloads/feed.xml",
         ),
         # Path given as Path object
-        ((rss_url, tmp_path := tmp_dir / "my_filename.rss"), tmp_path),
+        ((rss_url, tmp_path), tmp_path),
         # Same path but given as a string ("test/tmp/my-filename.rss")
         ((rss_url, str(tmp_path)), tmp_path),
     ],
@@ -192,7 +197,10 @@ def _same_attributes(this, other):
             )
         }
         from_channel = {"title": obj._channel["title"].text}
-        return attrs | from_meta_channel | from_channel
+
+        # Rewritten without `|` so tox can run tests for Python 3.7
+        # return attrs | from_meta_channel | from_channel
+        return {**attrs, **from_meta_channel, **from_channel}
 
     this_attrs = _attrs(this)
     other_attrs = _attrs(other)
@@ -285,9 +293,11 @@ def test_entries_to_rerun_single_rebroadcasts(fm, expected_len):
     # (Go through and rebroadcast all of the entries a few times over.)
     for i in range(7):
         # Rebroadcast entries until there is only 1 that has not been rebroadcasted
-        while (remaining := len(fm._entries_to_rerun())) > 1:
+        remaining = len(fm._entries_to_rerun())
+        while remaining > 1:
             fm.rebroadcast(1)
             assert len(fm._entries_to_rerun()) == remaining - 1
+            remaining -= 1
 
         # Rebroadcast the last remaining entry that has not yet been rebroadcast.
         fm.rebroadcast(1)
@@ -310,7 +320,10 @@ def test_entries_to_rerun_multiple_rebroadcasts(fm, expected_len, num):
     """Decrease remaining by num (mod len) after calling rebroadcast(num)."""
     assert len(fm._entries_to_rerun()) == expected_len
 
-    lcm = math.lcm(expected_len, num)
+    # Rewritten with `gcd` because Python 3.7 lacks `math.lcm` (but has `gcd`)
+    #   lcm = math.lcm(expected_len, num)
+    lcm = abs(expected_len * num) // gcd(expected_len, num)
+
     calls_to_reach_exactly_zero = lcm // num
     # print(f"Expected_len: {expected_len}, num: {num}")
     # print(f"LCM: {lcm}")
