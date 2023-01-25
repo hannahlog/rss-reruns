@@ -8,8 +8,8 @@
 
 ### Added
 
-- Tox for running tests in Python 3.7-3.11
-- Changelog
+- Added Tox for running tests with Python 3.7-3.11
+- Added changelog
 
 ## [0.0.1] - 2023-01-21
 

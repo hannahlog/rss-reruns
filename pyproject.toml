@@ -26,3 +26,4 @@ optional-dependencies = {dev = {file = ["requirements-dev.txt"]}}
 [project.urls]
 "Homepage" = "https://github.com/hannahlog/rss-reruns"
 "Bug Tracker" = "https://github.com/hannahlog/rss-reruns/issues"
+"Changelog" = "https://github.com/hannahlog/rss-reruns/blob/main/CHANGELOG.md"
