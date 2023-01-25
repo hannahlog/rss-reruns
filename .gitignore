@@ -1,5 +1,6 @@
-# Ignore virtual environment
+# Ignore virtual environments
 env/
+build/
 
 # Ignore pycache
 __pycache__/
