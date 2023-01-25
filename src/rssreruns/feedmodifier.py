@@ -263,13 +263,13 @@ class FeedModifier(ABC):
             self["title_suffix"] = suffix
 
         new_title_list: list[str] = [
-            self._meta_channel[part].text
-            for part in (
+            self._meta_channel[tag].text
+            for tag in (
                 "title_prefix",
                 "original_title",
                 "title_suffix",
             )
-            if part in self._meta_channel and self._meta_channel[part].text is not None
+            if tag in self._meta_channel and self._meta_channel[tag].text is not None
         ]
         self._channel["title"].text = " ".join(new_title_list)
         return self._channel["title"]
@@ -289,12 +289,12 @@ class FeedModifier(ABC):
             meta_entry = entry[self._meta_entry_tag]
 
             # Initialize dict of the title parts that exist
-            part_keys = ("entry_title_prefix", "original_title", "entry_title_suffix")
-            part_parents = (self._meta_channel, meta_entry, self._meta_channel)
+            tags = ("entry_title_prefix", "original_title", "entry_title_suffix")
+            parents = (self._meta_channel, meta_entry, self._meta_channel)
             title_parts: dict[str, str] = {
-                part: parent[part].text
-                for part, parent in zip(part_keys, part_parents)
-                if part in parent and parent[part].text is not None
+                tag: parent[tag].text
+                for tag, parent in zip(tags, parents)
+                if tag in parent and parent[tag].text is not None
             }
 
             # Apply the original date to the prefix and/or suffix if the original date
@@ -308,7 +308,7 @@ class FeedModifier(ABC):
                 for affix in affixes:
                     title_parts[affix] = dt.strftime(title_parts[affix])
 
-            title_list: list[str] = [title_parts[part] for part in part_keys]
+            title_list: list[str] = list(title_parts.values())
             entry["title"].text = " ".join(title_list)
         pass
 
