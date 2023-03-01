@@ -30,7 +30,7 @@ class FeedModifier(ABC):
     def __init__(
         self,
         path: str | Path | None,
-        contents: str | None = None,
+        contents: str | bytes | None = None,
         schedule_kwargs: Optional[Any] = None,
         run_forever: Optional[bool] = None,
         title_kwargs: dict[str, Any] = {},
@@ -156,13 +156,18 @@ class FeedModifier(ABC):
     @classmethod
     def from_url(cls, url, *, path=None, feed_format=None, **kwargs) -> "FeedModifier":
         """Create a FeedModifier from a given source feed's url."""
-        saved_path = cls.url_to_file(url, path)
-        kwargs.pop("url", None)
-        return cls.from_file(saved_path, **kwargs)
+        if path is not None:
+            saved_path = cls.url_to_file(url, path)
+            kwargs.pop("url", None)
+            return cls.from_file(saved_path, **kwargs)
+        else:
+            contents = cls.url_to_contents(url)
+            kwargs.pop("url", None)
+            return cls.from_string(contents, **kwargs)
 
     @classmethod
     def from_string(
-        cls, contents: str, *, feed_format=None, **kwargs
+        cls, contents: str | bytes, *, feed_format=None, **kwargs
     ) -> "FeedModifier":
         """Create a FeedModifier from a given source feed's string."""
         if feed_format is not None:
@@ -246,6 +251,16 @@ class FeedModifier(ABC):
         with open(path, "wb") as f:
             f.write(response.content)
         return path
+
+    @staticmethod
+    def url_to_contents(url: str) -> bytes:
+        """Download XML from given URL."""
+        response = requests.get(url)
+        if not response.ok:
+            raise ValueError(
+                f"Requested url {url} returned status code: {response.status_code}"
+            )
+        return response.content
 
     @property
     def run_forever(self):

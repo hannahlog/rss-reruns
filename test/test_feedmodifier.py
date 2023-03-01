@@ -163,6 +163,18 @@ def test_url_to_file_404(url_404):
     )
 
 
+@pytest.mark.parametrize(
+    "url",
+    [rss_url],
+)
+def test_from_url(url):
+    """Test `from_url` with real feed URLs. (Warning: `sleep` used for politeness)."""
+    sleep(3)
+    fm_via_string = FeedModifier.from_url(url)
+    fm_via_file = FeedModifier.from_url(url, path=tmp_dir / "blog-feed.xml")
+    assert _same_attributes(fm_via_string, fm_via_file)
+
+
 def test_from_string(simple_fnames):
     """Test initialization from string rather than url or filepath."""
     for fname in simple_fnames:
@@ -179,7 +191,6 @@ def test_from_string(simple_fnames):
 
             # Output as string, load from string, and compare
             out_string = fm.write(out_path)
-            print(type(out_string))
             deserialized = FeedModifier.from_string(out_string)
             assert _same_attributes(fm, deserialized)
 
