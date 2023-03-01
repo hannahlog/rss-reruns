@@ -163,13 +163,34 @@ def test_url_to_file_404(url_404):
     )
 
 
+def test_from_string(simple_fnames):
+    """Test initialization from string rather than url or filepath."""
+    for fname in simple_fnames:
+        with open(data_dir / fname, "rb") as f:
+            contents = f.read()
+            # print(type(contents))
+            fm = FeedModifier.from_string(contents)
+
+            # Write to file, load from file, and compare
+            out_path = tmp_dir / fname
+            fm.write(out_path)
+            deserialized = FeedModifier.from_file(out_path)
+            assert _same_attributes(fm, deserialized)
+
+            # Output as string, load from string, and compare
+            out_string = fm.write(out_path)
+            print(type(out_string))
+            deserialized = FeedModifier.from_string(out_string)
+            assert _same_attributes(fm, deserialized)
+
+
 def test_write(simple_fnames, simple_fms):
     """Test writing the modified feed (and associated FeedModifier data) to XML."""
     for fname, fm in zip(simple_fnames, simple_fms):
         out_path = tmp_dir / fname
         fm.write(out_path)
         # TODO: actually write these tests, expected output files, etc.
-        deserialized = fm.from_file(out_path)
+        deserialized = FeedModifier.from_file(out_path)
         assert _same_attributes(fm, deserialized)
         pass
 

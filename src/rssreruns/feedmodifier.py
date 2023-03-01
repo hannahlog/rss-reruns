@@ -29,25 +29,22 @@ class FeedModifier(ABC):
 
     def __init__(
         self,
-        path: str | Path,
+        path: str | Path | None,
+        contents: str | None = None,
         schedule_kwargs: Optional[Any] = None,
         run_forever: Optional[bool] = None,
         title_kwargs: dict[str, Any] = {},
         entry_title_kwargs: dict[str, str] = {},
     ) -> None:
         """Initialization."""
-        self.path: Path = Path(path)
+        if path is None and contents is None:
+            raise ValueError("Arguments path and contents cannot both be None.")
 
-        # If blank text is preserved, then `ET.write` will not properly indent
-        # any newly added elements which contain text, even with pretty printing.
-        # However, if the parser removes blank text, then `write()` will add new
-        # indentation to the entire document, so all elements wil be properly indented
-        # (if pretty printing is enabled.)
-        #
-        # See: "Why doesn't the pretty_print option reformat my XML output?"
-        # lxml.de/FAQ.html#why-doesn-t-the-pretty-print-option-reformat-my-xml-output
-        parser = ET.XMLParser(remove_blank_text=True, strip_cdata=False)
-        self._tree: ElementTree = ET.parse(self.path, parser=parser)
+        self.path = Path(path) if path is not None else None
+
+        self._tree: ElementTree = self._parse_file_or_string(
+            path=path, contents=contents
+        )
         root = self._tree.getroot()
 
         # Prefix and URI for the `reruns` XML namespace
@@ -138,16 +135,52 @@ class FeedModifier(ABC):
                 parent[tag].text = text
 
     @classmethod
-    def from_url(
-        cls, url, path=None, feed_format=None, *args, **kwargs
-    ) -> "FeedModifier":
-        """Create a FeedModifier from a given source feed's url."""
-        saved_path = cls.url_to_file(url, path)
-        kwargs["source_url"] = url
-        return cls.from_file(saved_path, *args, **kwargs)
+    def _parse_file_or_string(cls, path=None, contents=None) -> ElementTree:
+        """Parse from filepath or string."""
+        # If blank text is preserved, then `ET.write` will not properly indent
+        # any newly added elements which contain text, even with pretty printing.
+        # However, if the parser removes blank text, then `write()` will add new
+        # indentation to the entire document, so all elements wil be properly indented
+        # (if pretty printing is enabled.)
+        #
+        # See: "Why doesn't the pretty_print option reformat my XML output?"
+        # lxml.de/FAQ.html#why-doesn-t-the-pretty-print-option-reformat-my-xml-output
+        parser = ET.XMLParser(remove_blank_text=True, strip_cdata=False)
+        if path is not None:
+            return ET.parse(path, parser=parser)
+        elif contents is not None:
+            return ET.fromstring(contents, parser=parser).getroottree()
+        else:
+            raise ValueError("Either path or contents must not be None.")
 
     @classmethod
-    def from_file(cls, path, feed_format=None, *args, **kwargs) -> "FeedModifier":
+    def from_url(cls, url, *, path=None, feed_format=None, **kwargs) -> "FeedModifier":
+        """Create a FeedModifier from a given source feed's url."""
+        saved_path = cls.url_to_file(url, path)
+        kwargs.pop("url", None)
+        return cls.from_file(saved_path, **kwargs)
+
+    @classmethod
+    def from_string(
+        cls, contents: str, *, feed_format=None, **kwargs
+    ) -> "FeedModifier":
+        """Create a FeedModifier from a given source feed's string."""
+        if feed_format is not None:
+            concrete_subclass = (
+                RSSFeedModifier if "rss" in feed_format.lower() else AtomFeedModifier
+            )
+        else:
+            concrete_subclass = cls._infer_format_from_contents(
+                path=None, contents=contents
+            )
+
+        kwargs.pop("feed_format", None)
+        kwargs.pop("path", None)
+        kwargs.pop("contents", None)
+        return concrete_subclass(path=None, contents=contents, **kwargs)
+
+    @classmethod
+    def from_file(cls, path, *, feed_format=None, **kwargs) -> "FeedModifier":
         """Create a FeedModifier from a given source feed's path."""
         if feed_format is not None:
             concrete_subclass = (
@@ -156,7 +189,8 @@ class FeedModifier(ABC):
         else:
             concrete_subclass = cls._infer_format(path)
 
-        return concrete_subclass(path, *args, **kwargs)
+        kwargs.pop("feed_format", None)
+        return concrete_subclass(path, **kwargs)
 
     @classmethod
     def _infer_format(cls, path: str | Path) -> type["FeedModifier"]:
@@ -171,11 +205,23 @@ class FeedModifier(ABC):
         elif ".atom" in [suffix.lower() for suffix in path.suffixes]:
             return AtomFeedModifier
 
-        # Otherwise, parse the file
+        # Otherwise, inspect the actual contents
+        try:
+            return cls._infer_format_from_contents(path=path)
+        except ValueError as e:
+            raise ValueError(f"Format of file {path} could not be determined.") from e
+
+    @classmethod
+    def _infer_format_from_contents(
+        cls, path=None, contents=None
+    ) -> type["FeedModifier"]:
+        """Guess the format, RSS or Atom, of a given feed from its string contents."""
         # TODO: Wasteful to parse the entire file just to infer the feed's
         # format -- find less wasteful solution?
         # (To just check the root element?)
-        root: Element = ET.parse(path).getroot()
+        root: Element = cls._parse_file_or_string(
+            path=path, contents=contents
+        ).getroot()
 
         if "rss" in root.tag.lower():
             return RSSFeedModifier
@@ -183,8 +229,7 @@ class FeedModifier(ABC):
             return AtomFeedModifier
         else:
             raise ValueError(
-                f"Format of file {path} could not be determined. "
-                f"Root element: {root.tag}"
+                f"Format of feed could not be determined. " f"Root element: {root.tag}"
             )
 
     @staticmethod
@@ -380,10 +425,10 @@ class FeedModifier(ABC):
 
     def write(
         self,
-        path: str | Path,
+        path: str | Path | None,
         with_reruns_data: bool = True,
-        use_datetime: Optional[datetime | str] = None,
-    ) -> None:
+        use_datetime: datetime | str | None = None,
+    ) -> str:
         """Write modified feed (RSS or Atom) to XML file."""
         # Update when the feed itself was last built before writing out
         if use_datetime is None:
@@ -397,8 +442,13 @@ class FeedModifier(ABC):
         self.update_feed_builddate(dt)
 
         if with_reruns_data:
-            self._tree.write(
-                path, pretty_print=True, xml_declaration=True, encoding="utf-8"
+            if path is not None:
+                self._tree.write(
+                    path, pretty_print=True, xml_declaration=True, encoding="utf-8"
+                )
+            return ET.tounicode(
+                self._tree,
+                pretty_print=True,  # xml_declaration=True, encoding="utf-8"
             )
         else:
             stripped_tree = copy.deepcopy(self._tree)
@@ -420,10 +470,18 @@ class FeedModifier(ABC):
             ET.cleanup_namespaces(
                 stripped_tree, top_nsmap=nsmap, keep_ns_prefixes=list(nsmap)
             )
-            stripped_tree.write(
-                path, pretty_print=True, xml_declaration=True, encoding="utf-8"
+            if path is not None:
+                stripped_tree.write(
+                    path, pretty_print=True, xml_declaration=True, encoding="utf-8"
+                )
+            return ET.tounicode(
+                stripped_tree,
+                pretty_print=True,  # xml_declaration=True, encoding="utf-8"
             )
-        pass
+
+    def to_string(self, **kwargs) -> str:
+        """Output the tree as a string. See `write` for optional kwargs."""
+        return self.write(path=None, **kwargs)
 
     def get_entry_original_pubdate(self, entry: ElementWrapper) -> datetime:
         """Get a given entry/item's original date of publication."""
