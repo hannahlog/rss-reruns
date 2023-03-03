@@ -372,6 +372,10 @@ class FeedModifier(ABC):
             entry["title"].text = " ".join(title_list)
         pass
 
+    def num_remaining(self) -> int:
+        """Number of entries that have not yet been rebroadcast."""
+        return len(self._entries_to_rerun())
+
     def _entries_to_rerun(self) -> list[ElementWrapper]:
         """Entries that have not yet been rebroadcast."""
         not_reran = [
