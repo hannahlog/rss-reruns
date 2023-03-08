@@ -76,10 +76,10 @@ class FeedModifier(ABC):
             "rate": "1",
             "run_forever": "True",
             "original_title": self._channel["title"].text or "",
-            "title_prefix": "[Reruns:]",
+            "title_prefix": None,
             "title_suffix": None,
-            "entry_title_prefix": "[Rerun:]",
-            "entry_title_suffix": "(Originally published: %b %d %Y)",
+            "entry_title_prefix": None,
+            "entry_title_suffix": None,
         }
         self._create_defaults_if_missing(self._meta_channel, meta_channel_defaults)
 
@@ -280,7 +280,12 @@ class FeedModifier(ABC):
 
     def __getitem__(self, name) -> str:
         """Access meta channel subelements as if they're items of the FeedModifier."""
-        return self._meta_channel[name].text
+        if name in self._meta_channel:
+            return self._meta_channel[name].text
+        elif name in self._channel:
+            return self._channel[name].text
+        else:
+            raise KeyError(name)
 
     def __setitem__(self, name, value):
         """Access meta channel subelements as if they're items of the FeedModifier."""

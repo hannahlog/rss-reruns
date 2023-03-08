@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.5] - 2023-03-08
+
+### Changed
+
+- Changed behavior of `FeedModifier.__getitem__` to raise a `KeyError` when no subelement of the given name exists, instead of creating and returning the subelement 
+- Changed default values of `title_prefix` and `entry_title_[prefix/suffix]` from the prior arbitrary defaults to `None`
+
 ## [0.0.4] - 2023-03-03
 
 ### Added
