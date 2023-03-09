@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.0.6] - 2023-03-08
+
+### Added
+
+- Added optional `pretty_print` keyword argument to `FeedModifier.write()`, with default value `True`
+
+### Changed
+
+- Feed and entry title prefixes/suffixes now treat empty strings the same way they treat `None`: neither are used in the actual generated titles. Prefixes and suffixes set to `""` will now result in the same titles as if they had been set to `None`
+
 ## [0.0.5] - 2023-03-08
 
 ### Changed

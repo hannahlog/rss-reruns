@@ -359,7 +359,7 @@ class FeedModifier(ABC):
             title_parts: dict[str, str] = {
                 tag: parent[tag].text
                 for tag, parent in zip(tags, parents)
-                if tag in parent and parent[tag].text is not None
+                if tag in parent and parent[tag].text
             }
 
             # Apply the original date to the prefix and/or suffix if the original date
@@ -451,6 +451,7 @@ class FeedModifier(ABC):
         self,
         path: str | Path | None,
         with_reruns_data: bool = True,
+        pretty_print: bool = True,
         use_datetime: datetime | str | None = None,
     ) -> str:
         """Write modified feed (RSS or Atom) to XML file."""
@@ -468,11 +469,14 @@ class FeedModifier(ABC):
         if with_reruns_data:
             if path is not None:
                 self._tree.write(
-                    path, pretty_print=True, xml_declaration=True, encoding="utf-8"
+                    path,
+                    pretty_print=pretty_print,
+                    xml_declaration=True,
+                    encoding="utf-8",
                 )
             return ET.tounicode(
                 self._tree,
-                pretty_print=True,  # xml_declaration=True, encoding="utf-8"
+                pretty_print=pretty_print,  # xml_declaration=True, encoding="utf-8"
             )
         else:
             stripped_tree = copy.deepcopy(self._tree)
@@ -496,11 +500,14 @@ class FeedModifier(ABC):
             )
             if path is not None:
                 stripped_tree.write(
-                    path, pretty_print=True, xml_declaration=True, encoding="utf-8"
+                    path,
+                    pretty_print=pretty_print,
+                    xml_declaration=True,
+                    encoding="utf-8",
                 )
             return ET.tounicode(
                 stripped_tree,
-                pretty_print=True,  # xml_declaration=True, encoding="utf-8"
+                pretty_print=pretty_print,  # xml_declaration=True, encoding="utf-8"
             )
 
     def to_string(self, **kwargs) -> str:
