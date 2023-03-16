@@ -147,7 +147,9 @@ class FeedModifier(ABC):
         # lxml.de/FAQ.html#why-doesn-t-the-pretty-print-option-reformat-my-xml-output
         parser = ET.XMLParser(remove_blank_text=True, strip_cdata=False)
         if path is not None:
-            return ET.parse(path, parser=parser)
+            # base_url="" is needed to prevent lxml from using the document's filepath
+            # as an implicit base URI if no `xml:base` is declared
+            return ET.parse(path, parser=parser, base_url="")
         elif contents is not None:
             return ET.fromstring(contents, parser=parser).getroottree()
         else:
@@ -466,19 +468,10 @@ class FeedModifier(ABC):
             )
         self.update_feed_builddate(dt)
 
-        if with_reruns_data:
-            if path is not None:
-                self._tree.write(
-                    path,
-                    pretty_print=pretty_print,
-                    xml_declaration=True,
-                    encoding="utf-8",
-                )
-            return ET.tounicode(
-                self._tree,
-                pretty_print=pretty_print,  # xml_declaration=True, encoding="utf-8"
-            )
-        else:
+        # If reruns metadata is included, write out the original tree
+        tree_to_write = self._tree
+        if not with_reruns_data:
+            # Otherwise, make a stripped copy of the tree
             stripped_tree = copy.deepcopy(self._tree)
             stripped_root = stripped_tree.getroot()
 
@@ -498,17 +491,19 @@ class FeedModifier(ABC):
             ET.cleanup_namespaces(
                 stripped_tree, top_nsmap=nsmap, keep_ns_prefixes=list(nsmap)
             )
-            if path is not None:
-                stripped_tree.write(
-                    path,
-                    pretty_print=pretty_print,
-                    xml_declaration=True,
-                    encoding="utf-8",
-                )
-            return ET.tounicode(
-                stripped_tree,
-                pretty_print=pretty_print,  # xml_declaration=True, encoding="utf-8"
+            tree_to_write = stripped_tree
+
+        if path is not None:
+            tree_to_write.write(
+                path,
+                pretty_print=pretty_print,
+                xml_declaration=True,
+                encoding="utf-8",
             )
+        return ET.tounicode(
+            tree_to_write,
+            pretty_print=pretty_print,  # xml_declaration=True, encoding="utf-8"
+        )
 
     def to_string(self, **kwargs) -> str:
         """Output the tree as a string. See `write` for optional kwargs."""
@@ -520,6 +515,22 @@ class FeedModifier(ABC):
         if original_date is None:
             raise ValueError("Entry missing original_pubdate")
         return parser.parse(original_date)
+
+    def feed_type(self) -> str:
+        """Returns the feed format, "RSS" or "Atom".
+
+        NOTE: Relies on the class name of the concrete instance. If more subclasses
+        are made without 'RSS' or 'Atom' in the class name, for some other XML-based
+        syndication format (lol), that subclass should override this method.
+        """
+        if "rss" in str(type(self)).lower():
+            return "RSS"
+        elif "atom" in str(type(self)).lower():
+            return "Atom"
+        else:
+            raise RuntimeError(
+                f"Feed format of {type(self)} instance could not be determined."
+            )
 
     @abstractmethod
     def feed_channel(self) -> ElementWrapper:
@@ -546,6 +557,11 @@ class FeedModifier(ABC):
     @abstractmethod
     def update_feed_builddate(self, date: datetime) -> list[ElementWrapper]:
         """Update the feed's datetime of last publication."""
+        pass
+
+    @abstractmethod
+    def source_url(self) -> str:
+        """Return the original feed's url."""
         pass
 
     @staticmethod
@@ -593,6 +609,10 @@ class RSSFeedModifier(FeedModifier):
         self._channel["pubDate"].text = formatted_date
         self._channel["lastBuildDate"].text = formatted_date
         return [self._channel["pubDate"], self._channel["lastBuildDate"]]
+
+    def source_url(self) -> str:
+        """Return the original feed's url."""
+        return self._channel["link"].text
 
     @staticmethod
     def format_datetime(date: datetime) -> str:
@@ -658,6 +678,27 @@ class AtomFeedModifier(FeedModifier):
         formatted_date: str = self.format_datetime(date)
         self._channel["updated"] = formatted_date
         return [self._channel["updated"]]
+
+    def source_url(self) -> str:
+        """Return the original feed's url."""
+        links = self._channel.iterfind("link")
+        # An Atom feed may have multiple link elements, and "SHOULD" have one
+        # link element with the attribute `rel="self"`.
+        # (See RFC 4287:
+        # https://datatracker.ietf.org/doc/html/rfc4287#section-4.1.1)
+        self_links = [link for link in links if link.rel == "self"]
+        if links:
+            link = (self_links or links)[0]
+        else:
+            # TODO: not actually a ValueError
+            raise ValueError("Atom feed contains no feed link element.")
+
+        # The only reason to not just immediately return
+        #
+        #    (self_links or links)[0].href
+        #
+        # in the above is edge cases resolving uris relative to xml:base
+        return "".join([link.base or "", link.href])
 
     @staticmethod
     def format_datetime(date: datetime) -> str:

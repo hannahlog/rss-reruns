@@ -449,6 +449,38 @@ def test_AtomFeedModifier_format_datetime_simple():
         assert dt == dt_formatted
 
 
+def test_source_url_simple(simple_rss_fms, simple_atom_fms):
+    """Test source_url() returns the correct source url.
+
+    For RSS feeds, the feed channel has a single link element.
+
+    For Atom feeds, the feed may have multiple link elements, but should have one
+    with rel="self" (which will be returned if present.)
+    """
+    for fm in simple_rss_fms:
+        assert fm.source_url() == "http://example.com/notarealblogurl.htm"
+
+    for fm in simple_atom_fms:
+        assert fm.source_url() == "https://example.org/feed.atom"
+
+
+def test_source_url_xml_base():
+    """Test source_url() resolves URIs relative to xml:base correctly when needed.
+
+    See:
+        https://www.w3.org/TR/xmlbase/
+        https://feedparser.readthedocs.io/en/latest/resolving-relative-links.html
+    """
+    # Base URI https://www.example.org/ declared in the root
+    fm = as_Atom("namespaced_xml_base_in_root.atom")
+    assert fm.source_url() == "https://www.example.org/blog/news/feed.atom"
+
+    # Same base URI declared in the root, and "blog/news/" declared in the <link/>
+    # itself
+    fm = as_Atom("namespaced_xml_base_in_root_and_link.atom")
+    assert fm.source_url() == "https://www.example.org/blog/news/feed.atom"
+
+
 def w3c_feed_validator(path: Path | str) -> bool:
     """Validate an Atom/RSS feed through the W3C's public validation service."""
     base_uri = "http://validator.w3.org/feed/check.cgi"

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.7] - 2023-03-16
+
+### Added
+
+- Added `source_url()` method to get the feed source url (handling base URIs for Atom feeds properly when needed), along with test cases
+- Added `feed_type()` convenience method to return the type of feed as a string, "RSS" or "Atom", along with test cases
+
 ## [0.0.6] - 2023-03-08
 
 ### Added
