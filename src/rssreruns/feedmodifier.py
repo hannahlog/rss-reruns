@@ -523,13 +523,13 @@ class FeedModifier(ABC):
         are made without 'RSS' or 'Atom' in the class name, for some other XML-based
         syndication format (lol), that subclass should override this method.
         """
-        if "rss" in str(type(self)).lower():
+        if "rss" in self.__class__.__name__.lower():
             return "RSS"
-        elif "atom" in str(type(self)).lower():
+        elif "atom" in self.__class__.__name__.lower():
             return "Atom"
         else:
             raise RuntimeError(
-                f"Feed format of {type(self)} instance could not be determined."
+                f"Feed format of {self} instance could not be determined."
             )
 
     @abstractmethod

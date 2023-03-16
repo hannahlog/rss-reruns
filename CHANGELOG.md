@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.8] - 2023-03-16
+
+### Fixed
+
+- Fixed `feed_type()` and test cases
+
 ## [0.0.7] - 2023-03-16
 
 ### Added

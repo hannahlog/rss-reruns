@@ -481,6 +481,16 @@ def test_source_url_xml_base():
     assert fm.source_url() == "https://www.example.org/blog/news/feed.atom"
 
 
+def test_feed_type(simple_rss_fms, simple_atom_fms):
+    """Test feed_type() returns "RSS" or "Atom" as expected."""
+    # Base URI https://www.example.org/ declared in the root
+    for fm in simple_rss_fms:
+        assert fm.feed_type() == "RSS"
+
+    for fm in simple_atom_fms:
+        assert fm.feed_type() == "Atom"
+
+
 def w3c_feed_validator(path: Path | str) -> bool:
     """Validate an Atom/RSS feed through the W3C's public validation service."""
     base_uri = "http://validator.w3.org/feed/check.cgi"
