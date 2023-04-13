@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.0.11] - 2023-03-24
+
+### Fixed
+
+- Fixed erroneous creation of non-Atom `guid` elements when updating Atom entry `id` subelements
+
+## [0.0.10] - 2023-03-22
+
+### Added
+
+- Added initialization options to overwrite all of the original entry pubdates (even before doing any rebroadcasting), and also to add the rebroadcasted feed's url as an `<atom:link rel="self">` element. (These are further attempts to convince feedly to poll the rebroadcast feed more often)
+
+## [0.0.9] - 2023-03-21
+
+### Added
+
+- Added generation of new id/guid when an entry is rebroadcasted (attempt to solve issue of feedly not recognizing feed updates that show up successfully in other feed readers, apparently related to feedly's caching strategy)
+
 ## [0.0.8] - 2023-03-16
 
 ### Fixed

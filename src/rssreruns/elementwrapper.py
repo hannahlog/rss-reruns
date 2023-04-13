@@ -167,6 +167,12 @@ class ElementWrapper:
         return [ElementWrapper(found, found.prefix) for found in results]
 
     @try_unpack
+    def create_subelement(self, subelement_name: str | ET.QName) -> "ElementWrapper":
+        """Create a new subelement with the given name, even if others already exist."""
+        created = ET.SubElement(self._element, subelement_name)
+        return ElementWrapper(created, created.prefix)
+
+    @try_unpack
     def __contains__(self, subelement_name) -> bool:
         """Return if there is a subelement with the given name (i.e. `name in self`)."""
         return self._maybe_get_subelement(self._element, subelement_name) is not None
@@ -183,15 +189,22 @@ class ElementWrapper:
         except AttributeError:
             return self._element.get(key=attr)
 
-    @property
-    def text(self):
-        """Get wrapped element's text."""
-        return self._element.text
+    def __setattr__(self, attr, value):
+        """Set attribute of the underlying Element object.
 
-    @text.setter
-    def text(self, value):
-        """Set wrapped element's text."""
-        self._element.text = value
+        If the Element object has no such attribute, set the value of
+        the XML element for the given attribute name, i.e.
+        `my_elementwrapper.attrib = value` sets <tagname attrib="value"/>.
+        """
+        if attr in self._element or attr == "text":
+            self._element.__setattr__(attr, value)
+        else:
+            self._element.set(key=attr, value=str(value))
+
+    def remove_attribute(self, attr):
+        """Remove attribute from the element if present."""
+        if attr in self._element.attrib:
+            self._element.attrib.pop(attr)
         pass
 
     def _get_subelement(self, element, subelement_name: ET.QName | str) -> Element:
@@ -330,6 +343,12 @@ class ElementWrapper:
     def _clean_nsmap(self, nsmap: dict[Optional[str], str]) -> dict[str, str]:
         """Replace a `None` key an with empty string if encountered."""
         return {(k or _USE_DEFAULT_NAMESPACE): v for k, v in nsmap.items()}
+
+    def clear_xml_base(self) -> None:
+        """Reset xml:base to an empty string if a base URI is declared or inherited."""
+        if self._element.base:
+            self._element.base = ""
+        pass
 
 
 class ElementWrapperFactory:

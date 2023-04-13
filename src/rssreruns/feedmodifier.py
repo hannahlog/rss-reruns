@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import email.utils
 import random
+import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,12 +28,17 @@ class FeedModifier(ABC):
     Concrete subclasses correspond to the specific kind of feed, i.e. RSS or Atom.
     """
 
+    _bool_attributes = {"run_forever", "overwrite_entry_ids"}
+
     def __init__(
         self,
         path: str | Path | None,
         contents: str | bytes | None = None,
         schedule_kwargs: Optional[Any] = None,
         run_forever: Optional[bool] = None,
+        initialize_all_pubdates: bool = False,
+        overwrite_self_link: str | None = None,
+        overwrite_entry_ids: bool | None = None,
         title_kwargs: dict[str, Any] = {},
         entry_title_kwargs: dict[str, str] = {},
     ) -> None:
@@ -45,7 +51,6 @@ class FeedModifier(ABC):
         self._tree: ElementTree = self._parse_file_or_string(
             path=path, contents=contents
         )
-        root = self._tree.getroot()
 
         # Prefix and URI for the `reruns` XML namespace
         self._ns_prefix = "reruns"
@@ -58,10 +63,9 @@ class FeedModifier(ABC):
         # Declaration added to the root element as
         #   `xmlns:reruns="https://github.com/hannahlog/rss-reruns"`
         self.add_namespace(prefix=self._ns_prefix, uri=self._ns_uri)
-        self._nsmap = self._clean_nsmap(root.nsmap)
 
         self._default_EWF = ElementWrapperFactory("" if "" in self._nsmap else None)
-        self._root: ElementWrapper = self._default_EWF(root)
+        self._root: ElementWrapper = self._default_EWF(self._tree.getroot())
 
         # Element containing metadata and entry/item elements:
         # `feed` for Atom (which is also the root), `channel` for RSS (not the root)
@@ -76,6 +80,8 @@ class FeedModifier(ABC):
             "rate": "1",
             "run_forever": "True",
             "original_title": self._channel["title"].text or "",
+            "original_self_link": self.source_url(),
+            "overwrite_entry_ids": "False",
             "title_prefix": None,
             "title_suffix": None,
             "entry_title_prefix": None,
@@ -92,9 +98,17 @@ class FeedModifier(ABC):
                 "reran": "False",
             }
             self._create_defaults_if_missing(entry_meta, meta_entry_defaults)
+            if initialize_all_pubdates:
+                self.update_entry_pubdate(entry, datetime.now(timezone.utc))
 
         if run_forever is not None:
-            self.run_forever = run_forever
+            self["run_forever"] = run_forever
+
+        if overwrite_entry_ids is not None:
+            self["overwrite_entry_ids"] = overwrite_entry_ids
+
+        if overwrite_self_link:
+            self._overwrite_self_link(new_self_link=overwrite_self_link)
 
         self.set_feed_title(**title_kwargs)
         self.set_entry_titles(**entry_title_kwargs)
@@ -115,6 +129,7 @@ class FeedModifier(ABC):
         ET.cleanup_namespaces(
             self._tree, top_nsmap=nsmap, keep_ns_prefixes=all_prefixes
         )
+        self._nsmap = self._clean_nsmap(self._tree.getroot().nsmap)
         pass
 
     def _create_defaults_if_missing(
@@ -264,34 +279,25 @@ class FeedModifier(ABC):
             )
         return response.content
 
-    @property
-    def run_forever(self):
-        """Getter function for retrieving `forever` text from the etree."""
-        return self._meta_channel["run_forever"].text.lower() == "true"
-
-    @run_forever.setter
-    def run_forever(self, forever: bool | str):
-        """Setter function for setting `forever` text in the etree."""
-        if str(forever).capitalize() in {"True", "False"}:
-            self._meta_channel["run_forever"].text = str(forever).capitalize()
-        else:
-            raise ValueError(
-                f"Invalid value {forever} for `forever`: expected True or False."
-            )
-        pass
-
     def __getitem__(self, name) -> str:
         """Access meta channel subelements as if they're items of the FeedModifier."""
         if name in self._meta_channel:
-            return self._meta_channel[name].text
+            text = self._meta_channel[name].text
         elif name in self._channel:
-            return self._channel[name].text
+            text = self._channel[name].text
         else:
             raise KeyError(name)
+        return text if name not in self._bool_attributes else bool(text)
 
     def __setitem__(self, name, value):
         """Access meta channel subelements as if they're items of the FeedModifier."""
-        self._meta_channel[name].text = value
+        if name in self._bool_attributes and str(value).capitalize() not in {"True", "False"}:
+            raise ValueError(
+                f"Invalid value {value} for attribute {name}: expected True or False."
+            )
+        self._meta_channel[name].text = (
+            value if name not in self._bool_attributes else str(value).capitalize()
+        )
         pass
 
     def __delitem__(self, name):
@@ -391,7 +397,7 @@ class FeedModifier(ABC):
             if meta_entry["reran"].text.lower() == "false"
         ]
 
-        if len(not_reran) == 0 and self.run_forever:
+        if len(not_reran) == 0 and self["run_forever"]:
             self._mark_all_not_reran()
             return self.feed_entries()
         else:
@@ -447,6 +453,7 @@ class FeedModifier(ABC):
                 else parser.parse(use_datetime)
             )
         self.update_entry_pubdate(entry, dt)
+        self._update_entry_uuid(entry)
         entry[self._meta_entry_tag]["reran"].text = "True"
 
     def write(
@@ -532,6 +539,32 @@ class FeedModifier(ABC):
                 f"Feed format of {self} instance could not be determined."
             )
 
+    def _absolute_url(self, entry: ElementWrapper) -> str:
+        """Resolve a relative url and its base url into an absolute url."""
+        return entry.href if not entry.base else "".join([entry.base, entry.href])
+
+    def _generate_entry_uuid(self, entry: ElementWrapper) -> str:
+        """Generate a UUID for a given entry.
+
+        The generated UUID will not be the same as the atom:id or rss:guid for the entry
+        (if one is already present.)
+
+        It may not technically be "correct" to replace an item's existing uuid if one
+        considers the republished entry to be "the same" as the original. Unfortunately,
+        some feed readers cache the entry's information (including publication date)
+        with the uuid as the key -- as a result, the reader won't recognize that an
+        entry has had its publication date changed if the entry's uuid remains the same.
+        """
+        return uuid.uuid4().urn
+
+    @abstractmethod
+    def _update_entry_uuid(self, entry: ElementWrapper) -> ElementWrapper:
+        """Update the entry's uuid (the guid or id for RSS or Atom respectively).
+
+        Returns the element (<guid> or <id>) containing the new uuid.
+        """
+        pass
+
     @abstractmethod
     def feed_channel(self) -> ElementWrapper:
         """Returns the `feed` (Atom) or `channel` (RSS) element of the tree."""
@@ -562,6 +595,11 @@ class FeedModifier(ABC):
     @abstractmethod
     def source_url(self) -> str:
         """Return the original feed's url."""
+        pass
+
+    @abstractmethod
+    def _overwrite_self_link(self, new_self_link: str) -> None:
+        """Create or write over the url of the `<atom:link rel='self'/>` element."""
         pass
 
     @staticmethod
@@ -613,6 +651,29 @@ class RSSFeedModifier(FeedModifier):
     def source_url(self) -> str:
         """Return the original feed's url."""
         return self._channel["link"].text
+
+    def _overwrite_self_link(self, new_self_link: str) -> None:
+        """Create or write over the url of the `<atom:link rel='self'/>` element."""
+        if "atom" not in self._nsmap:
+            self.add_namespace(prefix="atom", uri="http://www.w3.org/2005/Atom")
+
+        # Per w3c recommendations for RSS:
+        # https://validator.w3.org/feed/docs/warning/MissingAtomSelfLink.html
+        atom_link = self._channel["atom", "link"]
+        self._channel["link"].addprevious(atom_link._element)
+        atom_link.clear_xml_base()
+        atom_link.href = new_self_link
+        atom_link.rel = "self"
+        atom_link.type = "application/rss+xml"
+
+    def _update_entry_uuid(self, entry: ElementWrapper) -> ElementWrapper:
+        """Update the entry's uuid in the <guid> subelement.
+
+        Returns the subelement containing the new uuid.
+        """
+        entry["guid"].text = self._generate_entry_uuid(entry)
+        entry["guid"].isPermaLink = "false"
+        return entry["guid"]
 
     @staticmethod
     def format_datetime(date: datetime) -> str:
@@ -681,6 +742,8 @@ class AtomFeedModifier(FeedModifier):
 
     def source_url(self) -> str:
         """Return the original feed's url."""
+        if "original_self_link" in self._meta_channel:
+            return self._meta_channel["original_self_link"].text
         links = self._channel.iterfind("link")
         # An Atom feed may have multiple link elements, and "SHOULD" have one
         # link element with the attribute `rel="self"`.
@@ -698,7 +761,31 @@ class AtomFeedModifier(FeedModifier):
         #    (self_links or links)[0].href
         #
         # in the above is edge cases resolving uris relative to xml:base
-        return "".join([link.base or "", link.href])
+        return self._absolute_url(link)
+
+    def _overwrite_self_link(self, new_self_link: str) -> None:
+        """Create or write over the url of the `<atom:link rel='self'/>` element."""
+        links = self._channel.iterfind("link")
+        self_links = [link for link in links if link.rel == "self"]
+        self_link = (
+            self_links[0] if self_links else self._channel.create_subelement("link")
+        )
+        if not self_links:
+            links[0].addprevious(self_link._element)
+
+        self_link.clear_xml_base()
+        self_link.href = new_self_link
+        self_link.rel = "self"
+        self_link.type = "application/atom+xml"
+
+    def _update_entry_uuid(self, entry: ElementWrapper) -> ElementWrapper:
+        """Update the entry's uuid in the <id> subelement.
+
+        Returns the subelement containing the new uuid.
+        """
+        entry["id"].text = self._generate_entry_uuid(entry)
+        entry["id"].isPermaLink = "false"
+        return entry["id"]
 
     @staticmethod
     def format_datetime(date: datetime) -> str:
