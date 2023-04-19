@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.12] - 2023-04-19
+
+### Changed
+
+- Calling `write()` with `with_reruns_data=False` now strips entries that have not yet been rebroadcasted. (Previously, this setting only stripped elements in the `reruns` namespace)
+
 ## [0.0.11] - 2023-03-24
 
 ### Fixed

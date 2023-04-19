@@ -357,21 +357,15 @@ def test_entries_to_rerun_multiple_rebroadcasts(fm, expected_len, num):
     lcm = abs(expected_len * num) // gcd(expected_len, num)
 
     calls_to_reach_exactly_zero = lcm // num
-    # print(f"Expected_len: {expected_len}, num: {num}")
-    # print(f"LCM: {lcm}")
-    # print(f"(lcm // num): {(lcm // num)}")
-    # print(f"(lcm // num) - 1: {(lcm // num) - 1}")
 
     # (Go through and rebroadcast all of the entries a few times over.)
     for i in range(7):
         remaining = expected_len
-        # print(f"{remaining} (mod {expected_len})")
         for calls_to_rebroadcast in range(calls_to_reach_exactly_zero - 1):
             fm.rebroadcast(num)
             now_remaining = (remaining - num) % expected_len
             assert len(fm._entries_to_rerun()) % expected_len == now_remaining
             remaining = now_remaining
-            # print(f"{remaining} (mod {expected_len})")
 
         # After (lcm // num) - 1 rebroadcasts of num entries, there should be exactly
         # `num` entries left to rebroadcast
@@ -383,6 +377,50 @@ def test_entries_to_rerun_multiple_rebroadcasts(fm, expected_len, num):
         # remaining entries, all entries should be marked as <reran>False</reran>, so
         # the number of remaining entries will again be the total number of entries.
         assert len(fm._entries_to_rerun()) == expected_len
+
+
+@pytest.mark.parametrize(
+    "fm, expected_len",
+    (
+        example
+        for example in (*rss_len_examples(), *atom_len_examples())
+        if example[1] > 0
+    ),
+)
+def test_write_strip_unrebroadcasted(fm, expected_len):
+    """Test `write` with `with_reruns_data=False` strips unrebroadcasted entries."""
+    fm.rebroadcast(expected_len - 1)
+    out_path = tmp_dir / "strip_unrebroadcasted.xml"
+    fm.write(out_path, with_reruns_data=False)
+    fm_from_stripped = FeedModifier.from_file(out_path)
+    # The entry which was not rebroadcasted should have been stripped, so there
+    # should be one less entry than in the original feed.
+    assert len(fm_from_stripped.feed_entries()) == expected_len - 1
+    pass
+
+
+@pytest.mark.parametrize(
+    "fm, expected_len",
+    (
+        example
+        for example in (*rss_len_examples(), *atom_len_examples())
+        if example[1] > 0
+    ),
+)
+def test_write_strip_only_unrebroadcasted(fm, expected_len):
+    """Test `write` with `with_reruns_data=False`.
+
+    Ensure that entries which have just been rebroadcasted are kept even if
+    mark_all_not_reran has been called.
+    """
+    fm.rebroadcast(expected_len + 1)
+    out_path = tmp_dir / "strip_only_unrebroadcasted.xml"
+    fm.write(out_path, with_reruns_data=False)
+    fm_from_stripped = FeedModifier.from_file(out_path)
+    # None of the entries should actually have been stripped, since they were all just
+    # rebroadcasted recently
+    assert len(fm_from_stripped.feed_entries()) == expected_len
+    pass
 
 
 def test_update_entry_pubdate(simple_fms):

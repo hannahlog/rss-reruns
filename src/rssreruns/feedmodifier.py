@@ -6,7 +6,7 @@ import email.utils
 import random
 import uuid
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -291,7 +291,10 @@ class FeedModifier(ABC):
 
     def __setitem__(self, name, value):
         """Access meta channel subelements as if they're items of the FeedModifier."""
-        if name in self._bool_attributes and str(value).capitalize() not in {"True", "False"}:
+        if name in self._bool_attributes and str(value).capitalize() not in {
+            "True",
+            "False",
+        }:
             raise ValueError(
                 f"Invalid value {value} for attribute {name}: expected True or False."
             )
@@ -482,6 +485,23 @@ class FeedModifier(ABC):
             stripped_tree = copy.deepcopy(self._tree)
             stripped_root = stripped_tree.getroot()
 
+            # Remove entries marked as not having been rebroadcasted
+            for meta_entry in self._default_EWF(stripped_root).iterdescendants(
+                self._meta_entry_tag
+            ):
+                entry = self._default_EWF(meta_entry.getparent())
+
+                # (Unless the entry was rebroadcasted recently -- i.e. if the entry
+                # was just rebroadcasted, but all of the feed's entries were exhausted,
+                # so all entries were marked as not having been rebroadcasted again)
+                # (TODO: change logic of `_mark_all_not_reran` or `_entries_to_rerun` so
+                # this check isn't necessary)
+                if (meta_entry["reran"].text.lower() == "false") and abs(
+                    parser.parse(self.get_entry_pubdate(entry))
+                    - datetime.now(timezone.utc)
+                ) > timedelta(days=1):
+                    entry.getparent().remove(entry._element)
+
             # Remove `reruns` elements from the tree's copy
             ET.strip_elements(
                 stripped_tree,
@@ -498,6 +518,7 @@ class FeedModifier(ABC):
             ET.cleanup_namespaces(
                 stripped_tree, top_nsmap=nsmap, keep_ns_prefixes=list(nsmap)
             )
+
             tree_to_write = stripped_tree
 
         if path is not None:
@@ -576,7 +597,7 @@ class FeedModifier(ABC):
         pass
 
     @abstractmethod
-    def get_entry_pubdate(self, entry: ElementWrapper) -> Optional[str]:
+    def get_entry_pubdate(self, entry: ElementWrapper) -> str:
         """Get a given entry/item's date of publication."""
         pass
 
@@ -625,7 +646,7 @@ class RSSFeedModifier(FeedModifier):
         """Returns iterator over the feed's item elements."""
         return self._channel.iterfind("item")
 
-    def get_entry_pubdate(self, entry: ElementWrapper) -> Optional[str]:
+    def get_entry_pubdate(self, entry: ElementWrapper) -> str:
         """Get a given entry/item's date of publication."""
         pubdate = entry["pubDate"]
         if pubdate is not None:
@@ -714,7 +735,7 @@ class AtomFeedModifier(FeedModifier):
         """Returns iterator over the feed's entry elements."""
         return self._default_EWF(self._root).iterfind("entry")
 
-    def get_entry_pubdate(self, entry: ElementWrapper) -> Optional[str]:
+    def get_entry_pubdate(self, entry: ElementWrapper) -> str:
         """Get a given entry/item's date of publication."""
         if "updated" in entry:
             return entry["updated"].text

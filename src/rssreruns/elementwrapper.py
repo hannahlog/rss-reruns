@@ -167,6 +167,14 @@ class ElementWrapper:
         return [ElementWrapper(found, found.prefix) for found in results]
 
     @try_unpack
+    def iterdescendants(
+        self, subelement_name: str | ET.QName
+    ) -> list["ElementWrapper"]:
+        """Find descendants matching a given name."""
+        results = self._element.iterdescendants(subelement_name)
+        return [ElementWrapper(found, found.prefix) for found in results]
+
+    @try_unpack
     def create_subelement(self, subelement_name: str | ET.QName) -> "ElementWrapper":
         """Create a new subelement with the given name, even if others already exist."""
         created = ET.SubElement(self._element, subelement_name)
