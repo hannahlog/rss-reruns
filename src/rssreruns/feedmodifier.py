@@ -505,8 +505,8 @@ class FeedModifier(ABC):
             # Remove `reruns` elements from the tree's copy
             ET.strip_elements(
                 stripped_tree,
-                self._meta_entry_tag.split(":")[1],
-                self._meta_channel_tag.split(":")[1],
+                ET.QName(self._ns_uri, self._meta_entry_tag.split(":")[1]),
+                ET.QName(self._ns_uri, self._meta_channel_tag.split(":")[1]),
             )
 
             # Remove `reruns` namespace declaration

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.13] - 2023-04-19
+
+### Fixed
+
+- Fixed error introduced in version 0.0.12 causing `reruns` namespace elements to not be removed when appropriate in `write()`
+
 ## [0.0.12] - 2023-04-19
 
 ### Changed
