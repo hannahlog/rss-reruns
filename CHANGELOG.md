@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.14] - 2023-04-27
+
+### Changed
+
+- Expanded README exposition and added a screenshot of generated feeds as they appear in Feedly.
+
 ## [0.0.13] - 2023-04-19
 
 ### Fixed

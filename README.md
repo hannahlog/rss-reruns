@@ -10,7 +10,7 @@ Example screenshot of rebroadcasted entries appearing alongside actual updates f
 
 To install the latest version from PyPi:
 ```
-pip install rssreruns==0.0.11
+pip install rssreruns==0.0.14
 ```
 Example usage to create a feed of reruns, from an existing feed's filepath or URL:
 ```python
@@ -43,7 +43,7 @@ fm.write(path="out/my_output_feed.xml")
 
 This is a personal project mainly intended for my own use. I've been using a feed reader for a few years, and have gradually come to follow a number of active blogs related to programming, software development, computer science, math, machine learning, and statistics. 
 
-As well as active blogs, however, I've also found blogs and site archives with many old entries of interest to me, but which are no longer (or very rarely) updated. Blogs which are still active often have archives of material I haven't read, in some cases going back a long time before I followed them. For a few examples: [Lambda the Ultimate](http://lambda-the-ultimate.org/), [Matt Might's blog](https://matt.might.net/articles/), [Hillel Wayne's excellent and very-much active blog](https://www.hillelwayne.com/post/), and `[insert whatever blog you'd personally consider to show Good Taste :)]` 
+As well as active blogs, however, I've also found blogs and site archives with many old entries of interest to me, but which are no longer (or very rarely) updated. Even blogs which are still active also often have archives of material I haven't read, in some cases going back a long time before I followed them. For a few examples: [Lambda the Ultimate](http://lambda-the-ultimate.org/), [Matt Might's blog](https://matt.might.net/articles/), [Hillel Wayne's excellent and very-much-active blog](https://www.hillelwayne.com/post/), and `[insert whatever blog you'd personally consider to show Good Taste :)]` 
 
 I wanted a way to have those old blog posts and essays occasionally show up in my feed reader, sprinkled in with actual updates from the active blogs I follow. This way, **slowly reading through those old entries is folded into my routine of checking for new articles to read.**
 
