@@ -4,7 +4,7 @@ Rebroadcast old RSS/Atom feed items to a new feed, in shuffled or chronological 
 
 Example screenshot of rebroadcasted entries appearing alongside actual updates from blogs I follow, as seen in my own feed reader:
 
-![Screenshot from Feedly](https://raw.githubusercontent.com/hannahlog/rss-reruns/main/screenshots/as_seen_in_feedly.png)
+![Screenshot from Feedly](https://github.com/hannahlog/rss-reruns/blob/main/screenshots/as_seen_in_feedly.png?raw=True)
 
 ## Installation and example usage
 
